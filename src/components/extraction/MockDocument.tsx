@@ -23,15 +23,15 @@ export const HighlightContext = createContext<HighlightCtx | null>(null);
 
 const pendingTone: Record<Confidence, string> = {
   high: "bg-brand-100/80 ring-brand-400",
-  medium: "bg-amber-100/90 ring-flag",
+  medium: "bg-flag-soft/90 ring-[#b45309]",
   low: "bg-coral-soft ring-coral",
 };
 
 const statusTone: Partial<Record<FieldStatus, string>> = {
   accepted: "bg-brand-50 ring-brand-600",
   corrected: "bg-sky-50 ring-sky-500",
-  rejected: "bg-slate-100 ring-slate-300 line-through decoration-slate-400 text-slate-400",
-  adjudicate: "bg-violet-50 ring-violet-400",
+  rejected: "bg-coral-soft/50 ring-coral/60 line-through decoration-coral text-ink-muted",
+  adjudicate: "bg-flag-soft ring-[#b45309]",
 };
 
 function Hl({ id, children, block }: { id: FieldId; children: ReactNode; block?: boolean }) {

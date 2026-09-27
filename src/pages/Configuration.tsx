@@ -239,7 +239,7 @@ function CriteriaBuilder({
               "group inline-flex animate-fade-in items-center gap-1 rounded-full border py-1 pr-1 pl-2.5 text-[12.5px]",
               tone === "include"
                 ? "border-brand-200 bg-white text-brand-800"
-                : "border-coral/25 bg-white text-[#a33a2f]",
+                : "border-coral/30 bg-white text-[#991b1b]",
             )}
           >
             {it}

@@ -8,7 +8,6 @@ import {
   FileText,
   Keyboard,
   Loader2,
-  MapPin,
   Pencil,
   Scale,
   ScanText,
@@ -18,7 +17,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, ConfidenceBadge, ProvenanceBadge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Segmented } from "@/components/ui/segmented";
@@ -337,7 +336,7 @@ export default function Extraction() {
             </div>
             <div className="flex items-center gap-3 text-[11px] text-ink-muted">
               <Legend cls="bg-brand-100 ring-brand-400" label="High" />
-              <Legend cls="bg-amber-100 ring-flag" label="Medium" />
+              <Legend cls="bg-flag-soft ring-[#b45309]" label="Medium" />
               <Legend cls="bg-coral-soft ring-coral" label="Low" />
               <Legend cls="bg-brand-50 ring-brand-600" label="Verified" />
             </div>
@@ -545,12 +544,6 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-const CONF_BADGE: Record<Confidence, { variant: "default" | "amber" | "coral"; label: string }> = {
-  high: { variant: "default", label: "High" },
-  medium: { variant: "amber", label: "Medium" },
-  low: { variant: "coral", label: "Low" },
-};
-
 function FieldRow({
   field,
   index,
@@ -581,7 +574,6 @@ function FieldRow({
   const status = v?.status ?? "pending";
   const [draft, setDraft] = useState(field.extracted);
   const inputRef = useRef<HTMLInputElement>(null);
-  const conf = CONF_BADGE[field.confidence];
   const score = confidenceScore(field.def.id + field.extracted, field.confidence);
   const final = finalFieldValue(field.extracted, v);
 
@@ -607,9 +599,9 @@ function FieldRow({
             ? "border-brand-300 bg-white"
             : "border-line bg-white",
         status === "accepted" && !active && "border-brand-200 bg-brand-50/30",
-        status === "corrected" && !active && "border-sky-200 bg-sky-50/40",
-        status === "rejected" && !active && "bg-slate-50 opacity-70",
-        status === "adjudicate" && !active && "border-violet-200 bg-violet-50/40",
+        status === "corrected" && !active && "border-sky-200 bg-sky-50/40 animate-flash",
+        status === "rejected" && !active && "border-coral/25 bg-coral-soft/20 opacity-70",
+        status === "adjudicate" && !active && "border-flag/35 bg-flag-soft/35",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -657,28 +649,17 @@ function FieldRow({
           )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <Badge variant={conf.variant} title="Model confidence">
-            <span
-              className={cn(
-                "size-1.5 rounded-full",
-                field.confidence === "high" ? "bg-brand-500" : field.confidence === "medium" ? "bg-flag" : "bg-coral",
-              )}
-            />
-            {conf.label} · {Math.round(score * 100)}%
-          </Badge>
+          <ConfidenceBadge confidence={field.confidence} score={score} />
         </div>
       </div>
 
       <div className="mt-2.5 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
-            <MapPin className="size-3" />
-            {field.def.source}
-          </span>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <ProvenanceBadge source={field.def.source} />
           {field.def.schemas
             .filter((s) => enabledSchemas.includes(s.key))
             .map((s) => (
-              <span key={s.key} className="rounded-md border border-line px-1.5 py-0.5 text-[10.5px] text-ink-muted">
+              <span key={s.key} className="rounded-md border border-line bg-white px-1.5 py-0.5 text-[10.5px] text-ink-muted">
                 {s.key === "annex8" ? s.item : `${SCHEMA_LABELS[s.key]} ${s.item}`}
               </span>
             ))}
@@ -731,8 +712,8 @@ function ActionBtn({
   const cls = {
     accept: "border-brand-200 bg-brand-50 text-brand-800 hover:bg-brand-600 hover:text-white hover:border-brand-600 px-2",
     correct: "border-line bg-white text-ink-soft hover:border-sky-400 hover:text-sky-700 w-7",
-    reject: "border-line bg-white text-ink-soft hover:border-coral hover:text-coral w-7",
-    adjudicate: "border-line bg-white text-ink-soft hover:border-violet-400 hover:text-violet-700 w-7",
+    reject: "border-line bg-white text-ink-soft hover:border-coral hover:text-[#991b1b] w-7",
+    adjudicate: "border-line bg-white text-ink-soft hover:border-[#b45309] hover:text-[#854408] w-7",
   }[tone];
   return (
     <button
@@ -752,14 +733,14 @@ function ActionBtn({
 function StatusPill({ status }: { status: string }) {
   const map: Record<string, { cls: string; label: string }> = {
     accepted: { cls: "bg-brand-600 text-white", label: "Accepted" },
-    corrected: { cls: "bg-sky-600 text-white", label: "Corrected" },
-    rejected: { cls: "bg-slate-400 text-white", label: "Rejected" },
-    adjudicate: { cls: "bg-violet-600 text-white", label: "Adjudication" },
+    corrected: { cls: "bg-sky-700 text-white", label: "Corrected" },
+    rejected: { cls: "bg-coral text-white", label: "Rejected" },
+    adjudicate: { cls: "bg-[#b45309] text-white", label: "Adjudication" },
   };
   const s = map[status];
   if (!s) return null;
   return (
-    <span className={cn("inline-flex animate-fade-in items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium", s.cls)}>
+    <span className={cn("inline-flex animate-fade-in items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shadow-xs", s.cls)}>
       {status === "accepted" && <Check className="size-3" strokeWidth={3} />}
       {s.label}
     </span>

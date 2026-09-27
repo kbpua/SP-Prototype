@@ -202,13 +202,13 @@ export default function Screening() {
 function relevanceTone(r: number) {
   if (r >= 0.85) return { bar: "bg-brand-600", text: "text-brand-700" };
   if (r >= 0.65) return { bar: "bg-brand-400", text: "text-brand-600" };
-  return { bar: "bg-slate-300", text: "text-ink-muted" };
+  return { bar: "bg-line", text: "text-ink-muted" };
 }
 
 const REC_STYLE: Record<Recommendation, { label: string; cls: string }> = {
   include: { label: "Recommend include", cls: "border-brand-200 bg-brand-50 text-brand-800" },
-  review: { label: "Recommend review", cls: "border-flag/30 bg-flag-soft text-[#9a5410]" },
-  exclude: { label: "Recommend exclude", cls: "border-coral/30 bg-coral-soft text-[#a33a2f]" },
+  review: { label: "Recommend review", cls: "border-flag/35 bg-flag-soft text-[#854408]" },
+  exclude: { label: "Recommend exclude", cls: "border-coral/35 bg-coral-soft text-[#991b1b]" },
 };
 
 function StudyRow({
@@ -234,7 +234,7 @@ function StudyRow({
   return (
     <Card
       className={cn(
-        "relative overflow-hidden px-5 py-4 transition-all duration-300",
+        "relative overflow-hidden px-5 py-4 transition-all duration-200 hover:border-brand-200/80",
         decision === "include" && "border-brand-300 bg-brand-50/40",
         decision === "exclude" && "bg-cream/70 opacity-75 hover:opacity-100",
         decision === "maybe" && "border-flag/40",
@@ -452,13 +452,13 @@ function DecisionButton({
 }) {
   const activeCls = {
     include: "bg-brand-600 text-white border-brand-600",
-    maybe: "bg-flag text-white border-flag",
+    maybe: "bg-[#b45309] text-white border-[#b45309]",
     exclude: "bg-coral text-white border-coral",
   }[tone];
   const idleCls = {
     include: "hover:border-brand-400 hover:text-brand-700",
-    maybe: "hover:border-flag hover:text-[#9a5410]",
-    exclude: "hover:border-coral hover:text-coral",
+    maybe: "hover:border-[#b45309] hover:text-[#854408]",
+    exclude: "hover:border-coral hover:text-[#991b1b]",
   }[tone];
   return (
     <button
@@ -513,20 +513,20 @@ function PrismaPanel({
             <ArrowRight className="size-4 text-ink-muted/50" />
           </div>
         </div>
-        <div className="ml-6 rounded-lg border border-coral/25 bg-coral-soft/50 px-3.5 py-3">
+        <div className="ml-6 rounded-lg border border-coral/30 bg-coral-soft/60 px-3.5 py-3">
           <div className="flex items-baseline justify-between">
-            <span className="text-[12.5px] font-medium text-[#a33a2f]">Records excluded</span>
-            <span className="text-[20px] font-semibold text-[#a33a2f]">
+            <span className="text-[12.5px] font-medium text-[#991b1b]">Records excluded</span>
+            <span className="text-[20px] font-semibold tabular text-[#991b1b]">
               <AnimatedNumber value={excluded} />
             </span>
           </div>
           {reasons.length > 0 && (
-            <ul className="mt-2 max-h-[240px] space-y-1.5 overflow-y-auto border-t border-coral/15 pt-2 pr-1 scrollbar-thin">
+            <ul className="mt-2 max-h-[240px] space-y-1.5 overflow-y-auto border-t border-coral/20 pt-2 pr-1 scrollbar-thin">
               {reasons.map(([r, n]) => (
                 <li key={r} className="flex animate-fade-in items-start justify-between gap-2 text-[11.5px] leading-snug text-ink-soft">
                   <span
                     title={r}
-                    className={cn("line-clamp-2", r.startsWith("Reason not") && "italic text-[#9a5410]")}
+                    className={cn("line-clamp-2", r.startsWith("Reason not") && "italic text-[#854408]")}
                   >
                     {r}
                   </span>
@@ -541,13 +541,13 @@ function PrismaPanel({
           <div className="text-[10.5px] font-medium tracking-wide text-brand-700">Included</div>
           <div className="flex items-baseline justify-between">
             <span className="text-[13px] font-medium text-brand-900">Studies included in review</span>
-            <span className="text-[30px] font-semibold leading-none text-brand-700">
+            <span className="text-[30px] font-semibold leading-none tabular text-brand-700">
               <AnimatedNumber value={included} />
             </span>
           </div>
         </div>
         {maybe > 0 && (
-          <div className="pt-2 text-center text-[11.5px] text-[#9a5410]">
+          <div className="pt-2 text-center text-[11.5px] font-medium text-[#854408]">
             {maybe} marked “maybe” — flagged for full-text review
           </div>
         )}

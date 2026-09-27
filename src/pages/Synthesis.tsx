@@ -71,7 +71,7 @@ export default function Synthesis() {
       {result ? (
         <>
           <div className="grid grid-cols-4 gap-4">
-            <Card className="col-span-2 border-brand-200 bg-gradient-to-br from-brand-50/70 to-white px-6 py-5">
+            <Card className="col-span-2 border-brand-200 bg-brand-50/40 px-6 py-5">
               <div className="text-[12.5px] font-medium text-brand-800">
                 Pooled {MEASURE_NAMES[measure].toLowerCase()} · random effects
               </div>
@@ -229,6 +229,7 @@ const COL = { study: 16, treat: 250, ctrl: 380, plotL: 500, plotR: 860, est: 900
 const CANDIDATE_TICKS = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3];
 
 function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs: StudyInput[]; measure: EffectMeasure }) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const lo = Math.min(0.5, ...result.studies.map((s) => s.lo)) * 0.95;
   const hi = Math.max(1.5, ...result.studies.map((s) => s.hi)) * 1.05;
   const x = (v: number) =>
@@ -243,7 +244,7 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
   const ease = "all 700ms cubic-bezier(0.2, 0.7, 0.2, 1)";
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full font-sans" role="img" aria-label="Forest plot">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full select-none font-sans" role="img" aria-label="Forest plot">
       {/* Header */}
       <g fill="#64748b" fontSize={13} fontWeight={500}>
         <text x={COL.study} y={24}>Study</text>
@@ -259,8 +260,24 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
       </g>
       <line x1={0} x2={W} y1={HEAD - 4} y2={HEAD - 4} stroke="#e7e2d6" />
 
+      {/* Subtle tick gridlines behind the plot */}
+      {ticks.map((t) => (
+        <line
+          key={`grid-${t}`}
+          x1={x(t)}
+          x2={x(t)}
+          y1={HEAD}
+          y2={axisY}
+          stroke="#e7e2d6"
+          strokeWidth={1}
+          strokeDasharray="2 3"
+          opacity={0.8}
+        />
+      ))}
+
       {/* Null line */}
-      <line x1={x(1)} x2={x(1)} y1={HEAD} y2={axisY} stroke="#94a3b8" strokeWidth={1.2} />
+      <line x1={x(1)} x2={x(1)} y1={HEAD} y2={axisY} stroke="#64748b" strokeWidth={1.4} />
+
       {/* Pooled estimate reference */}
       <line
         x1={x(result.est)}
@@ -268,7 +285,7 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
         y1={HEAD}
         y2={axisY}
         stroke="#1d9e75"
-        strokeWidth={1}
+        strokeWidth={1.2}
         strokeDasharray="3 4"
         style={{ transition: ease }}
       />
@@ -279,10 +296,23 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
         const size = 7 + 13 * Math.sqrt(s.weight / maxW);
         const xl = Math.max(COL.plotL, x(s.lo));
         const xr = Math.min(COL.plotR, x(s.hi));
+        const isHovered = hoveredId === s.id;
         return (
-          <g key={s.id} className="animate-fade-in" style={{ animationDelay: `${i * 70}ms` }}>
-            {i % 2 === 0 && <rect x={0} y={y - ROW / 2} width={W} height={ROW} fill="#faf8f3" />}
-            <text x={COL.study} y={y + 4.5} fontSize={14} fontWeight={600} fill="#1e293b">
+          <g
+            key={s.id}
+            className="cursor-pointer transition-colors duration-150"
+            onMouseEnter={() => setHoveredId(s.id)}
+            onMouseLeave={() => setHoveredId(null)}
+          >
+            <rect
+              x={0}
+              y={y - ROW / 2}
+              width={W}
+              height={ROW}
+              fill={isHovered ? "#f2eee4" : i % 2 === 0 ? "#faf8f3" : "transparent"}
+              className="transition-colors duration-150"
+            />
+            <text x={COL.study} y={y + 4.5} fontSize={14} fontWeight={600} fill={isHovered ? "#0f6e56" : "#1e293b"}>
               {s.label}
               <tspan fontWeight={400} fill="#64748b"> {s.year}</tspan>
             </text>
@@ -292,21 +322,30 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
             <text x={COL.ctrl + 60} y={y + 4.5} fontSize={13.5} textAnchor="middle" fill="#475569" className="tabular">
               {raw ? `${raw.eC} / ${raw.nC}` : "—"}
             </text>
-            <rect
-              x={xl}
-              y={y - 0.9}
-              width={Math.max(0, xr - xl)}
-              height={1.8}
-              fill="#334155"
-              style={{ x: xl, width: Math.max(0, xr - xl), transition: ease } as React.CSSProperties}
+            {/* CI Whisker Ends */}
+            <line x1={xl} x2={xl} y1={y - 3.5} y2={y + 3.5} stroke="#334155" strokeWidth={1.5} />
+            <line x1={xr} x2={xr} y1={y - 3.5} y2={y + 3.5} stroke="#334155" strokeWidth={1.5} />
+            {/* CI line */}
+            <line
+              x1={xl}
+              x2={xr}
+              y1={y}
+              y2={y}
+              stroke="#334155"
+              strokeWidth={1.8}
+              style={{ transition: ease }}
             />
+            {/* Study Marker Square */}
             <rect
               x={x(s.est) - size / 2}
               y={y - size / 2}
               width={size}
               height={size}
+              rx={1}
               fill="#0f6e56"
-              style={{ x: x(s.est) - size / 2, y: y - size / 2, width: size, height: size, transition: ease } as React.CSSProperties}
+              stroke="#093f31"
+              strokeWidth={0.8}
+              style={{ transition: ease }}
             />
             <text x={COL.est} y={y + 4.5} fontSize={13.5} fill="#1e293b" className="tabular">
               {s.est.toFixed(2)} [{s.lo.toFixed(2)}, {s.hi.toFixed(2)}]
@@ -326,11 +365,11 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
       <text x={COL.study} y={pooledY + 14} fontSize={11.5} fill="#64748b">
         DerSimonian–Laird
       </text>
-      <text x={COL.study} y={axisY + 19} fontSize={12} fill="#64748b">
+      <text x={COL.study} y={axisY + 19} fontSize={12} fill="#64748b" className="tabular">
         Heterogeneity: I² = {result.i2.toFixed(0)}%, τ² = {result.tau2.toFixed(4)}, Q = {result.q.toFixed(2)} (df ={" "}
         {result.df}), p = {formatP(result.pQ)}
       </text>
-      <text x={COL.study} y={axisY + 38} fontSize={12} fill="#64748b">
+      <text x={COL.study} y={axisY + 38} fontSize={12} fill="#64748b" className="tabular">
         Test for overall effect: z = {result.z.toFixed(2)}, p {formatP(result.p).startsWith("<") ? "" : "= "}
         {formatP(result.p)}
       </text>
@@ -340,27 +379,28 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
       <text x={COL.ctrl + 60} y={pooledY + 4.5} fontSize={13.5} fontWeight={600} textAnchor="middle" fill="#1e293b" className="tabular">
         {sum(inputs, "eC")} / {sum(inputs, "nC")}
       </text>
+      {/* Pooled Diamond */}
       <polygon
         key={`${measure}-${result.est.toFixed(4)}`}
         className="animate-fade-in"
-        points={`${x(result.lo)},${pooledY} ${x(result.est)},${pooledY - 10} ${x(result.hi)},${pooledY} ${x(result.est)},${pooledY + 10}`}
+        points={`${x(result.lo)},${pooledY} ${x(result.est)},${pooledY - 12} ${x(result.hi)},${pooledY} ${x(result.est)},${pooledY + 12}`}
         fill="#1d9e75"
-        stroke="#0c5643"
-        strokeWidth={1.2}
+        stroke="#093f31"
+        strokeWidth={1.6}
       />
       <text x={COL.est} y={pooledY + 4.5} fontSize={14} fontWeight={700} fill="#0c5643" className="tabular">
         {result.est.toFixed(2)} [{result.lo.toFixed(2)}, {result.hi.toFixed(2)}]
       </text>
-      <text x={COL.weight} y={pooledY + 4.5} fontSize={13.5} fontWeight={600} textAnchor="end" fill="#1e293b">
+      <text x={COL.weight} y={pooledY + 4.5} fontSize={13.5} fontWeight={600} textAnchor="end" fill="#1e293b" className="tabular">
         100%
       </text>
 
       {/* Axis */}
-      <line x1={COL.plotL} x2={COL.plotR} y1={axisY} y2={axisY} stroke="#334155" />
+      <line x1={COL.plotL} x2={COL.plotR} y1={axisY} y2={axisY} stroke="#334155" strokeWidth={1.2} />
       {ticks.map((t) => (
         <g key={t}>
-          <line x1={x(t)} x2={x(t)} y1={axisY} y2={axisY + 5} stroke="#334155" />
-          <text x={x(t)} y={axisY + 19} fontSize={12} textAnchor="middle" fill="#475569">
+          <line x1={x(t)} x2={x(t)} y1={axisY} y2={axisY + 5} stroke="#334155" strokeWidth={1.2} />
+          <text x={x(t)} y={axisY + 19} fontSize={12} textAnchor="middle" fill="#475569" className="tabular">
             {t}
           </text>
         </g>
@@ -368,7 +408,7 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
       <text x={x(1) - 10} y={axisY + 42} fontSize={12.5} textAnchor="end" fill="#0f6e56" fontWeight={500}>
         ← Favours dapagliflozin
       </text>
-      <text x={x(1) + 10} y={axisY + 42} fontSize={12.5} fill="#a33a2f" fontWeight={500}>
+      <text x={x(1) + 10} y={axisY + 42} fontSize={12.5} fill="#991b1b" fontWeight={500}>
         Favours control →
       </text>
     </svg>

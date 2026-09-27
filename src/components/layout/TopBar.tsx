@@ -32,18 +32,21 @@ export function TopBar() {
                 </Link>
                 <span>/</span>
                 <span className="font-mono">{ACTIVE_REVIEW_ID}</span>
-                <Badge variant="default" className="ml-1">
+                <Badge variant="default" className="ml-1 tabular">
                   In progress · {overall}%
                 </Badge>
+                <span className="hidden lg:inline-flex items-center rounded-full border border-brand-200/60 bg-brand-50/60 px-2 py-0.2 text-[10.5px] font-medium text-brand-800">
+                  RA 11223 Aligned
+                </span>
               </div>
-              <h1 className="mt-0.5 truncate text-[15px] font-semibold text-ink" title={config.title}>
+              <div className="mt-0.5 truncate text-[15px] font-semibold text-ink" title={config.title}>
                 {config.title}
-              </h1>
+              </div>
             </>
           ) : (
             <>
               <div className="text-[11.5px] text-ink-muted">Health Technology Assessment Council · Secretariat</div>
-              <h1 className="mt-0.5 text-[15px] font-semibold text-ink">Evidence synthesis workspace</h1>
+              <div className="mt-0.5 text-[15px] font-semibold text-ink">Evidence synthesis workspace</div>
             </>
           )}
         </div>

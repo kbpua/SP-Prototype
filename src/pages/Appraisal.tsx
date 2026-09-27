@@ -22,13 +22,13 @@ import { robOverall as baseRobOverall, type RobOverall } from "@/lib/review";
 
 const ROB_OPTS: { value: RobJudgement; label: string; cls: string; dot: string }[] = [
   { value: "low", label: "Low risk", cls: "bg-brand-600 border-brand-600 text-white", dot: "bg-brand-500" },
-  { value: "some", label: "Some concerns", cls: "bg-flag border-flag text-white", dot: "bg-flag" },
+  { value: "some", label: "Some concerns", cls: "bg-[#b45309] border-[#b45309] text-white", dot: "bg-[#b45309]" },
   { value: "high", label: "High risk", cls: "bg-coral border-coral text-white", dot: "bg-coral" },
 ];
 
 const AMSTAR_OPTS: { value: AmstarAnswer; label: string; cls: string; dot: string }[] = [
   { value: "yes", label: "Yes", cls: "bg-brand-600 border-brand-600 text-white", dot: "bg-brand-500" },
-  { value: "partial", label: "Partial yes", cls: "bg-flag border-flag text-white", dot: "bg-flag" },
+  { value: "partial", label: "Partial yes", cls: "bg-[#b45309] border-[#b45309] text-white", dot: "bg-[#b45309]" },
   { value: "no", label: "No", cls: "bg-coral border-coral text-white", dot: "bg-coral" },
 ];
 
@@ -93,13 +93,13 @@ export default function Appraisal() {
         description="Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials and AMSTAR 2 for systematic reviews, as recommended by the Philippine HTA Methods Guide."
       />
 
-      <div className="mb-6 flex items-start gap-4 rounded-xl border border-flag/30 bg-flag-soft/70 px-5 py-4">
-        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-white text-[#9a5410] shadow-sm">
+      <div className="mb-6 flex items-start gap-4 rounded-xl border border-flag/35 bg-flag-soft/70 px-5 py-4">
+        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-white text-[#854408] shadow-sm">
           <BotOff className="size-5" />
         </div>
         <div className="flex-1">
           <div className="text-[14px] font-semibold text-[#7a430d]">Automation is intentionally disabled at this stage</div>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-[#8a5a2b]">
+          <p className="mt-0.5 text-[13px] leading-relaxed text-[#854408]">
             Risk-of-bias judgements depend on expert interpretation of trial conduct. The system provides no AI
             suggestions here — every judgement and justification is recorded as the analyst's own, forming an auditable
             human checkpoint between screening and extraction.
@@ -108,7 +108,7 @@ export default function Appraisal() {
         <button
           type="button"
           onClick={loadSampleAppraisal}
-          className="flex shrink-0 cursor-pointer items-center gap-1.5 self-center rounded-md border border-dashed border-flag/40 px-2.5 py-1.5 text-[11.5px] text-[#8a5a2b] hover:bg-white/60"
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 self-center rounded-md border border-dashed border-flag/40 px-2.5 py-1.5 text-[11.5px] font-medium text-[#854408] hover:bg-white/60"
           title="Loads pre-written sample judgements for demonstration purposes"
         >
           <Wand2 className="size-3.5" /> Demo: load sample judgements

@@ -60,12 +60,12 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-4 gap-4">
         {stats.map((s) => (
-          <Card key={s.label} className="px-5 py-4">
+          <Card key={s.label} className="px-5 py-4 transition-all duration-200 hover:border-brand-200/80">
             <div className="flex items-center justify-between text-[12.5px] text-ink-muted">
               {s.label}
               <s.icon className="size-4 text-brand-600" />
             </div>
-            <div className="mt-2 text-[28px] font-semibold tracking-tight text-ink">
+            <div className="mt-2 text-[28px] font-semibold tracking-tight tabular text-ink">
               <AnimatedNumber value={s.value} duration={1100} />
             </div>
           </Card>
@@ -74,13 +74,13 @@ export default function Dashboard() {
 
       <div className="mt-6 grid grid-cols-3 gap-5">
         <Card className="col-span-2 overflow-hidden border-brand-200">
-          <div className="flex items-start justify-between gap-6 bg-gradient-to-br from-brand-50/80 to-white px-6 pt-6 pb-5">
+          <div className="flex items-start justify-between gap-6 border-b border-brand-100/70 bg-brand-50/45 px-6 pt-6 pb-5">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Badge variant="solid">Active</Badge>
                 <span className="font-mono text-[12px] text-ink-muted">{ACTIVE_REVIEW_ID}</span>
               </div>
-              <h3 className="mt-2.5 text-[19px] font-semibold leading-snug text-ink">{config.title}</h3>
+              <h2 className="mt-2.5 text-[19px] font-semibold leading-snug text-ink">{config.title}</h2>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-muted">
                 <span className="flex items-center gap-1.5">
                   <Clock className="size-3.5" /> Updated just now
@@ -92,14 +92,14 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[34px] font-semibold leading-none tracking-tight text-brand-700">
+              <div className="text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
                 <AnimatedNumber value={overall} />%
               </div>
               <div className="mt-1 text-[12px] text-ink-muted">complete</div>
             </div>
           </div>
-          <div className="px-6 pb-6">
-            <div className="grid grid-cols-6 gap-1.5">
+          <div className="px-6 pb-6 pt-5">
+            <div className="grid grid-cols-6 gap-2">
               {STAGES.map((s) => (
                 <div key={s.key}>
                   <Progress value={stageProgress[s.key]} className="h-1.5" />
@@ -138,13 +138,13 @@ export default function Dashboard() {
                   <span
                     className={cn(
                       "grid size-7 place-items-center rounded-full text-[12px] font-semibold",
-                      p.human ? "bg-flag-soft text-[#9a5410]" : "bg-brand-50 text-brand-700",
+                      p.human ? "bg-flag-soft text-[#854408]" : "bg-brand-50 text-brand-700",
                     )}
                   >
                     {p.human ? <UserRound className="size-3.5" /> : i + 1}
                   </span>
                   <div className="flex-1 text-[13.5px] font-medium text-ink">{p.label}</div>
-                  <span className={cn("text-[12px]", p.human ? "text-[#9a5410]" : "text-ink-muted")}>{p.who}</span>
+                  <span className={cn("text-[12px]", p.human ? "text-[#854408]" : "text-ink-muted")}>{p.who}</span>
                 </li>
               ))}
             </ol>
@@ -154,14 +154,14 @@ export default function Dashboard() {
 
       <div className="mt-5 grid grid-cols-3 gap-5">
         {OTHER_REVIEWS.map((r) => (
-          <Card key={r.id} className="flex flex-col p-5 transition-shadow hover:shadow-md">
+          <Card key={r.id} className="flex flex-col p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[11.5px] text-ink-muted">{r.id}</span>
               <Badge variant={r.stage === "Completed" ? "solid" : r.stage === "Appraisal" ? "amber" : "default"}>
                 {r.stage}
               </Badge>
             </div>
-            <h4 className="mt-2.5 flex-1 text-[14.5px] font-semibold leading-snug text-ink">{r.title}</h4>
+            <h3 className="mt-2.5 flex-1 text-[14.5px] font-semibold leading-snug text-ink">{r.title}</h3>
             <div className="mt-4">
               <div className="mb-1.5 flex justify-between text-[12px] text-ink-muted">
                 <span>

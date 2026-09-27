@@ -21,7 +21,7 @@ export function PageHeader({
       <div className="max-w-3xl">
         {step && <div className="mb-1.5 text-[12px] font-medium text-brand-700">{step}</div>}
         <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="text-[26px] font-semibold tracking-tight text-ink">{title}</h2>
+          <h1 className="text-[26px] font-semibold tracking-tight text-ink leading-tight">{title}</h1>
           {badges}
         </div>
         {description && <p className="mt-2 text-[14.5px] leading-relaxed text-ink-soft">{description}</p>}

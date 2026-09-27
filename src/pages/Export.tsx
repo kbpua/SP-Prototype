@@ -176,7 +176,7 @@ export default function Export() {
                 <ChevronRight className="absolute top-6 -right-2.5 size-5 text-brand-300" />
               )}
               <div className="text-[12px] font-medium text-ink-muted">{f.label}</div>
-              <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight text-brand-700">
+              <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
                 <AnimatedNumber value={f.value} duration={600 + i * 150} />
               </div>
               <div className="mt-1.5 text-[12px] text-ink-soft">{f.sub}</div>
