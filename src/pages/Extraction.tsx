@@ -18,6 +18,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, ConfidenceBadge, ProvenanceBadge } from "@/components/ui/badge";
+import { AboutAutomation } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Segmented } from "@/components/ui/segmented";
@@ -238,23 +239,24 @@ export default function Extraction() {
   const nonExtractable = included.length - extractable.length;
 
   return (
-    <div className="mx-auto max-w-[1560px] px-8 py-8">
+    <div className="mx-auto max-w-[1560px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <PageHeader
         step="Stage 4 of 6 · Core module"
         title="Extraction & verification"
         badges={
           <>
-            <Badge variant="default">
+            <Badge variant="default" className="whitespace-nowrap">
               <ScanText /> Layout-aware NER
             </Badge>
-            <Badge variant="amber">
+            <Badge variant="amber" className="whitespace-nowrap">
               <UserRound /> Human verification
             </Badge>
+            <AboutAutomation text="Values are extracted using layout-aware parsing and a fine-tuned entity recognition model, mapped to Annex 8, CONSORT, and PRISMA fields. Every value is verified by the analyst before synthesis." />
           </>
         }
         description="Each value is extracted from the trial report, mapped to guideline fields, and linked to its exact source location. The analyst verifies every field before it can enter synthesis."
         actions={
-          <Button variant="outline" onClick={() => acceptHighConfidence(extractable.map((s) => s.id))}>
+          <Button variant="outline" className="whitespace-nowrap" onClick={() => acceptHighConfidence(extractable.map((s) => s.id))}>
             <CheckCheck /> Accept high-confidence (all documents)
           </Button>
         }
@@ -301,26 +303,28 @@ export default function Extraction() {
       </div>
 
       {/* Performance strip */}
-      <Card className="mb-4 grid grid-cols-7 divide-x divide-line">
-        <div className="col-span-2 flex flex-col justify-center px-5 py-3">
-          <div className="text-[12px] font-medium text-ink-soft">Extraction benchmark · this document</div>
-          <div className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">
-            Compared against dual-annotator gold standard (mock evaluation)
+      <div className="mb-4 max-w-full overflow-x-auto">
+        <Card className="grid min-w-[760px] xl:min-w-0 grid-cols-7 divide-x divide-line">
+          <div className="col-span-2 flex flex-col justify-center px-4 xl:px-5 py-3">
+            <div className="text-[12px] font-medium text-ink-soft">Extraction benchmark · this document</div>
+            <div className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">
+              Compared against dual-annotator gold standard (mock evaluation)
+            </div>
           </div>
-        </div>
-        <Metric label="Precision" value={m.precision} />
-        <Metric label="Recall" value={m.recall} />
-        <Metric label="F1 score" value={m.f1} highlight />
-        <Metric label="Cohen's κ" value={m.kappa} sub="annotator agreement" />
-        <div className="flex flex-col justify-center px-5 py-3">
-          <div className="text-[11.5px] text-ink-muted">Fields verified</div>
-          <div className="text-[22px] font-semibold tabular text-ink">
-            <AnimatedNumber value={resolved} />
-            <span className="text-[14px] font-normal text-ink-muted">/{fields.length}</span>
+          <Metric label="Precision" value={m.precision} />
+          <Metric label="Recall" value={m.recall} />
+          <Metric label="F1 score" value={m.f1} highlight />
+          <Metric label="Cohen's κ" value={m.kappa} sub="annotator agreement" />
+          <div className="flex flex-col justify-center px-4 xl:px-5 py-3">
+            <div className="text-[11.5px] text-ink-muted">Fields verified</div>
+            <div className="text-[20px] xl:text-[22px] font-semibold tabular text-ink">
+              <AnimatedNumber value={resolved} />
+              <span className="text-[14px] font-normal text-ink-muted">/{fields.length}</span>
+            </div>
+            <Progress value={(resolved / Math.max(1, fields.length)) * 100} className="mt-1 h-1" />
           </div>
-          <Progress value={(resolved / Math.max(1, fields.length)) * 100} className="mt-1 h-1" />
-        </div>
-      </Card>
+        </Card>
+      </div>
 
       {/* Split pane */}
       <div className="grid h-[calc(100vh-150px)] min-h-[620px] grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-4">
@@ -440,12 +444,12 @@ export default function Extraction() {
                 ))}
               </div>
             ) : (
-              FIELD_GROUPS.map((g) => {
+              FIELD_GROUPS.map((g, gIdx) => {
                 const groupFields = visibleFields.filter((f) => f.def.group === g);
                 if (groupFields.length === 0) return null;
                 return (
-                  <div key={g} className="mb-4">
-                    <div className="sticky top-0 z-10 -mx-4 mb-1.5 bg-white/95 px-4 py-1.5 text-[11.5px] font-semibold tracking-wide text-ink-muted backdrop-blur">
+                  <div key={g} className={cn("mb-5", gIdx > 0 && "pt-2 border-t border-line/60")}>
+                    <div className="mb-2 px-0.5 text-[11px] font-semibold tracking-wider uppercase text-ink-muted">
                       {g}
                     </div>
                     <div className="space-y-2">
@@ -519,12 +523,12 @@ export default function Extraction() {
 
 function Metric({ label, value, sub, highlight }: { label: string; value: number; sub?: string; highlight?: boolean }) {
   return (
-    <div className="flex flex-col justify-center px-5 py-3">
-      <div className="text-[11.5px] text-ink-muted">{label}</div>
-      <div className={cn("text-[22px] font-semibold tabular", highlight ? "text-brand-700" : "text-ink")}>
+    <div className="flex flex-col justify-center px-3 xl:px-5 py-3">
+      <div className="text-[11.5px] text-ink-muted whitespace-nowrap">{label}</div>
+      <div className={cn("text-[20px] xl:text-[22px] font-semibold tabular", highlight ? "text-brand-700" : "text-ink")}>
         <AnimatedNumber value={value} digits={value < 1 && label !== "F1 score" ? 2 : 3} />
       </div>
-      {sub && <div className="-mt-0.5 text-[10.5px] text-ink-muted">{sub}</div>}
+      {sub && <div className="-mt-0.5 text-[10.5px] text-ink-muted truncate">{sub}</div>}
     </div>
   );
 }
@@ -653,7 +657,7 @@ function FieldRow({
         </div>
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <ProvenanceBadge source={field.def.source} />
           {field.def.schemas

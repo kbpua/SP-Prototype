@@ -23,6 +23,6 @@ export const MODE_LABEL: Record<StageDef["mode"], string> = {
   setup: "Setup",
   automated: "Automated",
   human: "Human only",
-  hybrid: "AI + human",
+  hybrid: "Automated + human",
   output: "Output",
 };

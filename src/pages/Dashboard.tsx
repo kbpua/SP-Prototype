@@ -19,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const PIPELINE = [
-  { label: "Screening", who: "AI-ranked, human decides" },
+  { label: "Screening", who: "Ranked by system · analyst decides" },
   { label: "Appraisal", who: "Human only", human: true },
   { label: "Extraction", who: "Layout-aware NER" },
   { label: "Verification", who: "Human only", human: true },
@@ -46,66 +46,66 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1280px] px-8 py-8">
+    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <PageHeader
         title="Reviews in progress"
         description="Systematic reviews supporting HTAC recommendations. Each review moves through screening, human appraisal, automated extraction with human verification, and synthesis."
         actions={
-          <Button size="lg" onClick={() => navigate("/review/config")}>
+          <Button size="lg" className="whitespace-nowrap" onClick={() => navigate("/review/config")}>
             <Plus />
             New review
           </Button>
         }
       />
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((s) => (
-          <Card key={s.label} className="px-5 py-4 transition-all duration-200 hover:border-brand-200/80">
+          <Card key={s.label} className="px-4 sm:px-5 py-4 transition-all duration-200 hover:border-brand-200/80">
             <div className="flex items-center justify-between text-[12.5px] text-ink-muted">
-              {s.label}
-              <s.icon className="size-4 text-brand-600" />
+              <span className="truncate">{s.label}</span>
+              <s.icon className="size-4 shrink-0 text-brand-600 ml-2" />
             </div>
-            <div className="mt-2 text-[28px] font-semibold tracking-tight tabular text-ink">
+            <div className="mt-2 text-[26px] sm:text-[28px] font-semibold tracking-tight tabular text-ink">
               <AnimatedNumber value={s.value} duration={1100} />
             </div>
           </Card>
         ))}
       </div>
 
-      <div className="mt-6 grid grid-cols-3 gap-5">
-        <Card className="col-span-2 overflow-hidden border-brand-200">
-          <div className="flex items-start justify-between gap-6 border-b border-brand-100/70 bg-brand-50/45 px-6 pt-6 pb-5">
-            <div className="min-w-0">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Card className="col-span-1 lg:col-span-2 overflow-hidden border-brand-200">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-brand-100/70 bg-brand-50/45 px-5 sm:px-6 pt-5 sm:pt-6 pb-5">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <Badge variant="solid">Active</Badge>
-                <span className="font-mono text-[12px] text-ink-muted">{ACTIVE_REVIEW_ID}</span>
+                <Badge variant="solid" className="whitespace-nowrap">Active</Badge>
+                <span className="font-mono text-[12px] text-ink-muted whitespace-nowrap">{ACTIVE_REVIEW_ID}</span>
               </div>
-              <h2 className="mt-2.5 text-[19px] font-semibold leading-snug text-ink">{config.title}</h2>
+              <h2 className="mt-2.5 text-[18px] sm:text-[19px] font-semibold leading-snug text-ink">{config.title}</h2>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-muted">
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
                   <Clock className="size-3.5" /> Updated just now
                 </span>
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
                   <Users className="size-3.5" /> 2 analysts · 1 adjudicator
                 </span>
-                <span>{CANDIDATE_STUDIES.length} records identified</span>
+                <span className="whitespace-nowrap">{CANDIDATE_STUDIES.length} records identified</span>
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
+            <div className="text-right shrink-0">
+              <div className="text-[30px] sm:text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
                 <AnimatedNumber value={overall} />%
               </div>
               <div className="mt-1 text-[12px] text-ink-muted">complete</div>
             </div>
           </div>
-          <div className="px-6 pb-6 pt-5">
-            <div className="grid grid-cols-6 gap-2">
+          <div className="px-5 sm:px-6 pb-6 pt-5">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {STAGES.map((s) => (
                 <div key={s.key}>
                   <Progress value={stageProgress[s.key]} className="h-1.5" />
                   <div
                     className={cn(
-                      "mt-2 text-[11.5px]",
+                      "mt-2 text-[11.5px] truncate",
                       s.key === current.key ? "font-semibold text-brand-800" : "text-ink-muted",
                     )}
                   >
@@ -114,7 +114,7 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <div className="mt-5 flex items-center justify-between">
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
               <div className="text-[13px] text-ink-soft">
                 Current stage: <span className="font-medium text-ink">{current.label}</span>
               </div>
@@ -137,14 +137,14 @@ export default function Dashboard() {
                 <li key={p.label} className="flex items-center gap-3">
                   <span
                     className={cn(
-                      "grid size-7 place-items-center rounded-full text-[12px] font-semibold",
+                      "grid size-7 shrink-0 place-items-center rounded-full text-[12px] font-semibold",
                       p.human ? "bg-flag-soft text-[#854408]" : "bg-brand-50 text-brand-700",
                     )}
                   >
                     {p.human ? <UserRound className="size-3.5" /> : i + 1}
                   </span>
-                  <div className="flex-1 text-[13.5px] font-medium text-ink">{p.label}</div>
-                  <span className={cn("text-[12px]", p.human ? "text-[#854408]" : "text-ink-muted")}>{p.who}</span>
+                  <div className="flex-1 text-[13.5px] font-medium text-ink truncate">{p.label}</div>
+                  <span className={cn("text-[12px] shrink-0", p.human ? "text-[#854408]" : "text-ink-muted")}>{p.who}</span>
                 </li>
               ))}
             </ol>
@@ -152,7 +152,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-5">
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {OTHER_REVIEWS.map((r) => (
           <Card key={r.id} className="flex flex-col p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between">

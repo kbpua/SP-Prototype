@@ -18,11 +18,12 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AboutAutomation } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Progress } from "@/components/ui/progress";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
-import { PageHeader, StageFooter } from "@/components/PageHeader";
+import { PageHeader } from "@/components/PageHeader";
 import { useReview, type Decision } from "@/state/ReviewContext";
 import {
   CANDIDATE_STUDIES,
@@ -44,21 +45,22 @@ function recommendationFor(score: number): Recommendation {
 
 export default function Screening() {
   const navigate = useNavigate();
-  const { screening, setDecision, rationales, setRationale, included } = useReview();
+  const { screening, setDecision, rationales, setRationale } = useReview();
   const [filter, setFilter] = useState<Filter>("all");
 
   const rationaleText = (id: string) => rationales[id] ?? SCREENING_RATIONALES[id] ?? "";
-  const loggedReason = (text: string) => text.trim() || undefined;
 
-  const confirm = (id: string, d: Decision | null) =>
-    setDecision(id, d ? { decision: d, reason: loggedReason(rationaleText(id)) } : null);
+  const confirm = (id: string, d: Decision | null, reasonCategory?: string) => {
+    const study = CANDIDATE_STUDIES.find((c) => c.id === id);
+    const category = d === "exclude" ? (reasonCategory ?? study?.suggested.reason ?? "Reason not specified") : undefined;
+    setDecision(id, d ? { decision: d, reason: category } : null);
+  };
 
   const editRationale = (id: string, text: string | null) => {
     setRationale(id, text === null || text === SCREENING_RATIONALES[id] ? null : text);
     const current = screening[id];
     if (current) {
-      const next = text ?? SCREENING_RATIONALES[id] ?? "";
-      setDecision(id, { ...current, reason: loggedReason(next) });
+      setDecision(id, { ...current });
     }
   };
 
@@ -81,9 +83,10 @@ export default function Screening() {
 
   const reasons = useMemo(() => {
     const r: Record<string, number> = {};
-    for (const d of Object.values(screening)) {
-      if (d.decision === "exclude") {
-        const k = d.reason ?? "Reason not yet specified";
+    for (const s of CANDIDATE_STUDIES) {
+      const d = screening[s.id];
+      if (d?.decision === "exclude") {
+        const k = (d.reason && d.reason.length < 50 ? d.reason : s.suggested.reason) ?? "Reason not specified";
         r[k] = (r[k] ?? 0) + 1;
       }
     }
@@ -100,47 +103,90 @@ export default function Screening() {
     });
 
   const total = CANDIDATE_STUDIES.length;
+  const duplicatesRemoved = 1;
   const screened = counts.include + counts.exclude;
 
+  // Gate: Undecided must be 0 AND at least one study Included
+  const canProceed = counts.undecided === 0 && counts.include > 0;
+
+  const handleProceed = () => {
+    if (!canProceed) return;
+    if (counts.maybe > 0) {
+      const proceed = window.confirm(
+        `${counts.maybe} ${counts.maybe === 1 ? "study is" : "studies are"} marked Maybe. Resolve them, or continue with Included studies only?`,
+      );
+      if (!proceed) return;
+    }
+    navigate("/review/appraisal");
+  };
+
+  const footerNote = useMemo(() => {
+    if (counts.undecided > 0) {
+      return `Resolve ${counts.undecided} undecided ${counts.undecided === 1 ? "study" : "studies"} to proceed.`;
+    }
+    if (counts.include === 0) {
+      return "Include at least one study to proceed.";
+    }
+    if (counts.maybe > 0) {
+      return `${counts.include} studies included (${counts.maybe} marked Maybe). Only Included studies carry forward.`;
+    }
+    return `${counts.include} studies will proceed to critical appraisal.`;
+  }, [counts]);
+
   return (
-    <div className="mx-auto max-w-[1400px] px-8 py-8">
+    <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pt-4 pb-6">
       <PageHeader
         step="Stage 2 of 6"
         title="Title and abstract screening"
-        badges={<Badge variant="default"><Sparkles /> AI-ranked · human decides</Badge>}
+        badges={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="default" className="whitespace-nowrap">
+              <Sparkles /> Ranked by system · analyst decides
+            </Badge>
+            <AboutAutomation text="Records are ranked by embedding similarity to the PICOS question. The system suggests a decision and rationale; the analyst makes and logs every decision." />
+          </div>
+        }
         description="Candidate records are ranked by embedding similarity to the PICOS question and eligibility criteria. Every include or exclude decision is made by the analyst and logged for the PRISMA flow diagram."
       />
 
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8">
-          <Card className="mb-4 flex items-center gap-4 px-4 py-3">
-            <Database className="size-4 shrink-0 text-brand-700" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-mono text-[12px] text-ink-soft">{SEARCH_SUMMARY.query}</div>
-              <div className="mt-0.5 text-[11.5px] text-ink-muted">
-                Searched {SEARCH_SUMMARY.searchedOn} ·{" "}
-                {SEARCH_SUMMARY.databases.map((d) => `${d.name} (${d.records})`).join(" · ")}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-w-0">
+        <div className="col-span-1 lg:col-span-8 min-w-0">
+          <Card className="mb-3 px-4 py-2.5 min-w-0">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 text-[12.5px] font-semibold text-ink">
+                <Database className="size-3.5 shrink-0 text-brand-700" />
+                <span>Search strategy (imported)</span>
               </div>
+              <span className="text-[10.5px] font-medium text-ink-muted bg-cream-dark/60 rounded px-2 py-0.5 border border-line">
+                Analyst-supplied records
+              </span>
+            </div>
+            <div className="truncate font-mono text-[11.5px] text-ink-soft">{SEARCH_SUMMARY.query}</div>
+            <div className="mt-1 truncate text-[11px] text-ink-muted">
+              Imported from analyst's search · 20 records via RIS/CSV ·{" "}
+              {SEARCH_SUMMARY.databases.map((d) => `${d.name} (${d.records})`).join(" · ")}
             </div>
           </Card>
 
-          <div className="mb-3 flex items-center justify-between">
-            <Segmented<Filter>
-              size="sm"
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { value: "all", label: `All ${total}` },
-                { value: "undecided", label: `Undecided ${counts.undecided}` },
-                { value: "include", label: `Included ${counts.include}` },
-                { value: "maybe", label: `Maybe ${counts.maybe}` },
-                { value: "exclude", label: `Excluded ${counts.exclude}` },
-              ]}
-            />
-            <span className="text-[12px] text-ink-muted">Sorted by relevance score</span>
+          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div className="max-w-full overflow-x-auto">
+              <Segmented<Filter>
+                size="sm"
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  { value: "all", label: `All ${total}` },
+                  { value: "undecided", label: `Undecided ${counts.undecided}` },
+                  { value: "include", label: `Included ${counts.include}` },
+                  { value: "maybe", label: `Maybe ${counts.maybe}` },
+                  { value: "exclude", label: `Excluded ${counts.exclude}` },
+                ]}
+              />
+            </div>
+            <span className="text-[11.5px] text-ink-muted whitespace-nowrap">Sorted by relevance score</span>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2.5 pb-8">
             {list.map((s) => (
               <StudyRow
                 key={s.id}
@@ -160,8 +206,8 @@ export default function Screening() {
           </div>
         </div>
 
-        <div className="col-span-4">
-          <div className="sticky top-6 space-y-4">
+        <div className="col-span-1 lg:col-span-4 min-w-0">
+          <div className="sticky top-4 space-y-3.5">
             <PrismaPanel
               total={total}
               screened={screened}
@@ -169,32 +215,45 @@ export default function Screening() {
               excluded={counts.exclude}
               maybe={counts.maybe}
               undecided={counts.undecided}
+              duplicatesRemoved={duplicatesRemoved}
               reasons={reasons}
             />
-            <button
-              type="button"
-              onClick={fillRemaining}
-              className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-line py-2 text-[12px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700"
-            >
-              <Wand2 className="size-3.5" />
-              Demo shortcut: fill remaining with reference decisions
-            </button>
+
+            {/* Dynamic CTA Block below PRISMA flow */}
+            <div className="space-y-2.5 rounded-xl border border-line bg-white p-3.5 shadow-2xs">
+              <Button
+                size="lg"
+                className="w-full justify-center shadow-xs"
+                disabled={!canProceed}
+                onClick={handleProceed}
+                title={
+                  counts.undecided > 0
+                    ? `Resolve ${counts.undecided} undecided ${counts.undecided === 1 ? "study" : "studies"} to proceed`
+                    : counts.include === 0
+                      ? "Include at least one study to proceed"
+                      : undefined
+                }
+              >
+                Proceed to appraisal
+                <ArrowRight className="size-4" />
+              </Button>
+
+              <div className="text-center text-[12px] text-ink-muted leading-snug px-1">
+                {footerNote}
+              </div>
+
+              <button
+                type="button"
+                onClick={fillRemaining}
+                className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-line py-2 text-[12px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700 bg-cream/40"
+              >
+                <Wand2 className="size-3.5" />
+                Demo shortcut: fill remaining with reference decisions
+              </button>
+            </div>
           </div>
         </div>
       </div>
-
-      <StageFooter
-        note={
-          included.length === 0
-            ? "Include at least one study to proceed."
-            : `${included.length} studies will proceed to critical appraisal.`
-        }
-      >
-        <Button size="lg" disabled={included.length === 0} onClick={() => navigate("/review/appraisal")}>
-          Proceed to appraisal
-          <ArrowRight />
-        </Button>
-      </StageFooter>
     </div>
   );
 }
@@ -246,8 +305,8 @@ function StudyRow({
           decision === "include" ? "bg-brand-500" : decision === "exclude" ? "bg-coral/60" : decision === "maybe" ? "bg-flag" : "bg-transparent",
         )}
       />
-      <div className="flex gap-5">
-        <div className="w-[104px] shrink-0 pt-0.5">
+      <div className="flex gap-4 sm:gap-5">
+        <div className="w-32 min-w-[128px] shrink-0 pt-0.5">
           <div className={cn("text-[20px] font-semibold leading-none tabular", tone.text)}>
             {Math.round(study.relevance * 100)}
           </div>
@@ -255,7 +314,7 @@ function StudyRow({
           <Progress value={study.relevance * 100} className="mt-1.5 h-1" barClassName={tone.bar} />
           <div
             className={cn(
-              "mt-2.5 rounded-md border px-1.5 py-1 text-center text-[11px] font-medium leading-tight",
+              "mt-2.5 rounded-md border px-2 py-1 text-center text-[11px] font-medium leading-tight whitespace-nowrap",
               REC_STYLE[rec].cls,
             )}
             title="Derived from the relevance score — advisory only"
@@ -300,7 +359,7 @@ function StudyRow({
           {disagrees && (
             <div className="mt-2 flex animate-fade-in items-center gap-1.5 text-[11.5px] text-[#9a5410]">
               <AlertTriangle className="size-3.5" />
-              Your decision differs from the AI recommendation
+              Your decision differs from the system recommendation
               {!edited && " — consider editing the rationale so the logged reason reflects your judgement."}
             </div>
           )}
@@ -367,11 +426,11 @@ function RationaleBox({
           <span className="text-[11.5px] font-semibold text-ink-soft">Screening rationale</span>
           {edited ? (
             <Badge variant="amber">
-              <UserRound /> Reviewer-edited
+              <UserRound /> Analyst-edited
             </Badge>
           ) : (
             <Badge variant="default">
-              <Sparkles /> AI-proposed
+              <Sparkles /> System-suggested
             </Badge>
           )}
           {logged && <span className="text-[11px] text-ink-muted">· logged as reason</span>}
@@ -383,9 +442,9 @@ function RationaleBox({
                 type="button"
                 onClick={onRevert}
                 className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] text-ink-muted hover:bg-white hover:text-ink"
-                title="Restore the AI-proposed rationale"
+                title="Restore the system-suggested rationale"
               >
-                <RotateCcw className="size-3" /> Revert to AI
+                <RotateCcw className="size-3" /> Revert to suggestion
               </button>
             )}
             <button
@@ -465,7 +524,7 @@ function DecisionButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-7 w-[92px] cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium transition-all active:scale-95 [&_svg]:size-3.5",
+        "flex h-7 w-[92px] shrink-0 whitespace-nowrap cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-all active:scale-95 [&_svg]:size-3.5",
         active ? activeCls : cn("border-line bg-white text-ink-soft", idleCls),
       )}
     >
@@ -481,6 +540,7 @@ function PrismaPanel({
   excluded,
   maybe,
   undecided,
+  duplicatesRemoved,
   reasons,
 }: {
   total: number;
@@ -489,94 +549,169 @@ function PrismaPanel({
   excluded: number;
   maybe: number;
   undecided: number;
+  duplicatesRemoved: number;
   reasons: [string, number][];
 }) {
   return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center justify-between border-b border-line bg-cream/60 px-5 py-3">
+    <Card className="overflow-hidden shadow-xs">
+      <div className="flex items-center justify-between border-b border-line bg-cream/60 px-4 py-2.5">
         <div>
-          <div className="text-[14px] font-semibold text-ink">PRISMA 2020 flow</div>
-          <div className="text-[11.5px] text-ink-muted">Updates live with each decision</div>
+          <div className="text-[13.5px] font-semibold text-ink">PRISMA 2020 flow (simplified)</div>
+          <div className="text-[11px] text-ink-muted">Updates live with each decision</div>
         </div>
-        <span className="relative flex size-2.5">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-400 opacity-60" />
-          <span className="relative inline-flex size-2.5 rounded-full bg-brand-500" />
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-400 opacity-60" />
+            <span className="relative inline-flex size-2 rounded-full bg-brand-500" />
+          </span>
+          <span className="text-[10.5px] font-medium text-brand-700">Live</span>
+        </div>
       </div>
 
-      <div className="space-y-1 p-5">
-        <FlowBox phase="Identification" label="Records identified" value={total} sub="4 databases incl. HERDIN" />
+      <div className="space-y-1.5 p-3.5">
+        {/* Step 1: Identification */}
+        <FlowRow
+          phase="Identification"
+          label="Records identified"
+          value={total}
+          sub="4 databases via RIS/CSV (PubMed, CENTRAL, Embase, HERDIN)"
+        />
+
         <Arrow />
-        <div className="grid grid-cols-[1fr_auto] items-stretch gap-2">
-          <FlowBox phase="Screening" label="Records screened" value={screened} sub={`of ${total} · ${undecided + maybe} awaiting`} />
-          <div className="flex items-center text-line">
-            <ArrowRight className="size-4 text-ink-muted/50" />
-          </div>
-        </div>
-        <div className="ml-6 rounded-lg border border-coral/30 bg-coral-soft/60 px-3.5 py-3">
-          <div className="flex items-baseline justify-between">
-            <span className="text-[12.5px] font-medium text-[#991b1b]">Records excluded</span>
-            <span className="text-[20px] font-semibold tabular text-[#991b1b]">
+
+        {/* Step 2: Deduplication */}
+        <FlowRow
+          phase="Deduplication"
+          label="Duplicate records removed"
+          value={duplicatesRemoved}
+          sub="Flagged before screening (DAPA-ASIA Embase record)"
+        />
+
+        <Arrow />
+
+        {/* Step 3: Screening */}
+        <FlowRow
+          phase="Screening"
+          label="Records screened"
+          value={screened}
+          sub={`${screened} of ${total - duplicatesRemoved} unique · ${undecided + maybe} awaiting decision`}
+        />
+
+        {/* Records Excluded */}
+        <DashedConnector label="Excluded" />
+
+        <div className="rounded-lg border border-coral/30 bg-coral-soft/50 p-3 shadow-2xs">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#991b1b]">
+                Screening
+              </div>
+              <div className="text-[13px] font-semibold text-[#991b1b]">
+                Records excluded
+              </div>
+            </div>
+            <span className="text-[18px] font-bold tabular text-[#991b1b] leading-none">
               <AnimatedNumber value={excluded} />
             </span>
           </div>
-          {reasons.length > 0 && (
-            <ul className="mt-2 max-h-[240px] space-y-1.5 overflow-y-auto border-t border-coral/20 pt-2 pr-1 scrollbar-thin">
-              {reasons.map(([r, n]) => (
-                <li key={r} className="flex animate-fade-in items-start justify-between gap-2 text-[11.5px] leading-snug text-ink-soft">
-                  <span
-                    title={r}
-                    className={cn("line-clamp-2", r.startsWith("Reason not") && "italic text-[#854408]")}
+
+          {reasons.length > 0 ? (
+            <div className="mt-2 pt-2 border-t border-coral/25">
+              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[#991b1b] mb-1.5">
+                Exclusion rationales:
+              </div>
+              <div className="space-y-1 max-h-[140px] overflow-y-auto scrollbar-thin pr-0.5">
+                {reasons.map(([r, n]) => (
+                  <div
+                    key={r}
+                    className="flex items-center justify-between gap-2 text-[11.5px] text-ink-soft bg-white/80 px-2.5 py-1 rounded border border-coral/20"
                   >
-                    {r}
-                  </span>
-                  <span className="tabular font-medium">{n}</span>
-                </li>
-              ))}
-            </ul>
+                    <span title={r} className="truncate font-medium">
+                      {r}
+                    </span>
+                    <span className="tabular font-bold text-[#991b1b] shrink-0 bg-coral/10 px-1.5 py-0.5 rounded text-[10.5px]">
+                      {n}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-1 text-[11px] text-ink-muted">0 excluded so far</div>
           )}
         </div>
+
         <Arrow />
-        <div className="rounded-lg border-2 border-brand-500 bg-brand-50 px-4 py-3.5">
-          <div className="text-[10.5px] font-medium tracking-wide text-brand-700">Included</div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-[13px] font-medium text-brand-900">Studies included in review</span>
-            <span className="text-[30px] font-semibold leading-none tabular text-brand-700">
+
+        {/* Step 4: Included */}
+        <div className="rounded-lg border-2 border-brand-500 bg-brand-50/90 p-3.5 shadow-xs">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              <div className="text-[10.5px] font-bold uppercase tracking-wider text-brand-700">
+                Included
+              </div>
+              <div className="text-[13.5px] font-semibold text-brand-950 mt-0.5">
+                Studies included in review
+              </div>
+              <div className="text-[11px] text-brand-800/80 mt-0.5">
+                Carried forward into Critical Appraisal
+              </div>
+            </div>
+            <span className="text-[26px] font-extrabold tabular text-brand-700 leading-none">
               <AnimatedNumber value={included} />
             </span>
           </div>
+
+          {maybe > 0 && (
+            <div className="mt-2 text-[11px] font-medium text-[#854408] bg-flag-soft/60 px-2 py-1 rounded border border-flag/30 text-center">
+              {maybe} marked “Maybe” · flagged for full-text
+            </div>
+          )}
         </div>
-        {maybe > 0 && (
-          <div className="pt-2 text-center text-[11.5px] font-medium text-[#854408]">
-            {maybe} marked “maybe” — flagged for full-text review
-          </div>
-        )}
       </div>
 
-      <div className="border-t border-line px-5 py-3.5">
-        <div className="mb-1.5 flex justify-between text-[12px] text-ink-muted">
+      <div className="border-t border-line bg-cream/40 px-4 py-2.5">
+        <div className="mb-1 flex justify-between text-[11.5px] text-ink-muted">
           <span>Screening progress</span>
-          <span className="tabular font-medium text-ink-soft">
-            {screened}/{total}
+          <span className="tabular font-semibold text-ink-soft">
+            {screened}/{total} ({Math.round((screened / total) * 100)}%)
           </span>
         </div>
-        <Progress value={(screened / total) * 100} />
+        <Progress value={(screened / total) * 100} className="h-1.5" />
       </div>
     </Card>
   );
 }
 
-function FlowBox({ phase, label, value, sub }: { phase: string; label: string; value: number; sub: string }) {
+function FlowRow({
+  phase,
+  label,
+  value,
+  sub,
+}: {
+  phase: string;
+  label: string;
+  value: number;
+  sub: string;
+}) {
   return (
-    <div className="rounded-lg border border-line bg-white px-4 py-3">
-      <div className="text-[10.5px] font-medium tracking-wide text-ink-muted">{phase}</div>
-      <div className="flex items-baseline justify-between">
-        <span className="text-[13px] font-medium text-ink">{label}</span>
-        <span className="text-[22px] font-semibold text-ink">
+    <div className="rounded-lg border border-line bg-white p-3 shadow-2xs hover:border-brand-200 transition-colors">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+            {phase}
+          </div>
+          <div className="text-[13px] font-medium text-ink truncate mt-0.5">
+            {label}
+          </div>
+        </div>
+        <div className="tabular font-bold text-[18px] text-ink shrink-0 leading-none">
           <AnimatedNumber value={value} />
-        </span>
+        </div>
       </div>
-      <div className="text-[11.5px] text-ink-muted">{sub}</div>
+      <div className="text-[11px] text-ink-muted truncate mt-1">
+        {sub}
+      </div>
     </div>
   );
 }
@@ -584,7 +719,17 @@ function FlowBox({ phase, label, value, sub }: { phase: string; label: string; v
 function Arrow() {
   return (
     <div className="flex justify-center py-0.5">
-      <ArrowDown className="size-4 text-ink-muted/50" />
+      <ArrowDown className="size-3.5 text-ink-muted/40" />
+    </div>
+  );
+}
+
+function DashedConnector({ label }: { label?: string }) {
+  return (
+    <div className="flex items-center justify-center gap-1.5 py-0.5">
+      <div className="h-2 w-0 border-r border-dashed border-coral/40" />
+      {label && <span className="text-[9.5px] uppercase tracking-wider text-coral font-semibold">{label}</span>}
+      <div className="h-2 w-0 border-r border-dashed border-coral/40" />
     </div>
   );
 }

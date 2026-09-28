@@ -151,7 +151,7 @@ export default function Export() {
   );
 
   return (
-    <div className="mx-auto max-w-[1240px] px-8 py-8">
+    <div className="mx-auto max-w-[1240px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <PageHeader
         step="Stage 6 of 6"
         title="Export"
@@ -160,7 +160,7 @@ export default function Export() {
 
       <Card className="overflow-hidden border-brand-200">
         <div className="flex items-center gap-3 bg-brand-700 px-6 py-4 text-white">
-          <PartyPopper className="size-5" />
+          <PartyPopper className="size-5 shrink-0" />
           <div>
             <div className="text-[15px] font-semibold">Pipeline complete</div>
             <div className="text-[12.5px] text-brand-100">
@@ -169,14 +169,14 @@ export default function Export() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-5 items-stretch px-4 py-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-y-4 items-stretch px-4 py-6">
           {funnel.map((f, i) => (
-            <div key={f.label} className="relative flex flex-col items-center text-center">
+            <div key={f.label} className="relative flex flex-col items-center text-center px-2">
               {i < funnel.length - 1 && (
-                <ChevronRight className="absolute top-6 -right-2.5 size-5 text-brand-300" />
+                <ChevronRight className="hidden md:block absolute top-6 -right-2.5 size-5 text-brand-300" />
               )}
               <div className="text-[12px] font-medium text-ink-muted">{f.label}</div>
-              <div className="mt-1 text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
+              <div className="mt-1 text-[30px] sm:text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
                 <AnimatedNumber value={f.value} duration={600 + i * 150} />
               </div>
               <div className="mt-1.5 text-[12px] text-ink-soft">{f.sub}</div>
@@ -185,8 +185,8 @@ export default function Export() {
         </div>
       </Card>
 
-      <div className="mt-5 grid grid-cols-3 gap-5">
-        <Card className="col-span-2 flex min-h-0 flex-col overflow-hidden">
+      <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Card className="col-span-1 lg:col-span-2 flex min-h-0 flex-col overflow-hidden">
           <div className="flex items-center justify-between border-b border-line px-5 py-3">
             <Segmented<Format>
               size="sm"

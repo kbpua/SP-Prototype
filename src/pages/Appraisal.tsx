@@ -81,42 +81,44 @@ export default function Appraisal() {
   const next = included[selectedIndex + 1];
 
   return (
-    <div className="mx-auto max-w-[1400px] px-8 py-8">
+    <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <PageHeader
         step="Stage 3 of 6"
         title="Critical appraisal"
         badges={
-          <Badge variant="amber" className="py-1 text-[12px]">
+          <Badge variant="amber" className="py-1 text-[12px] whitespace-nowrap">
             <UserRound /> Human review required
           </Badge>
         }
         description="Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials and AMSTAR 2 for systematic reviews, as recommended by the Philippine HTA Methods Guide."
       />
 
-      <div className="mb-6 flex items-start gap-4 rounded-xl border border-flag/35 bg-flag-soft/70 px-5 py-4">
-        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-white text-[#854408] shadow-sm">
-          <BotOff className="size-5" />
-        </div>
-        <div className="flex-1">
-          <div className="text-[14px] font-semibold text-[#7a430d]">Automation is intentionally disabled at this stage</div>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-[#854408]">
-            Risk-of-bias judgements depend on expert interpretation of trial conduct. The system provides no AI
-            suggestions here — every judgement and justification is recorded as the analyst's own, forming an auditable
-            human checkpoint between screening and extraction.
-          </p>
+      <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-xl border border-flag/35 bg-flag-soft/70 px-4 sm:px-5 py-4">
+        <div className="flex items-start gap-4 flex-1 min-w-0">
+          <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-white text-[#854408] shadow-sm">
+            <BotOff className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[14px] font-semibold text-[#7a430d]">Automation is intentionally disabled at this stage</div>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-[#854408]">
+              Risk-of-bias judgements depend on expert interpretation of trial conduct. The system provides no automated
+              suggestions here — every judgement and justification is recorded as the analyst's own, forming an auditable
+              human checkpoint between screening and extraction.
+            </p>
+          </div>
         </div>
         <button
           type="button"
           onClick={loadSampleAppraisal}
-          className="flex shrink-0 cursor-pointer items-center gap-1.5 self-center rounded-md border border-dashed border-flag/40 px-2.5 py-1.5 text-[11.5px] font-medium text-[#854408] hover:bg-white/60"
+          className="flex shrink-0 whitespace-nowrap cursor-pointer items-center gap-1.5 self-start sm:self-center rounded-md border border-dashed border-flag/40 px-2.5 py-1.5 text-[11.5px] font-medium text-[#854408] hover:bg-white/60"
           title="Loads pre-written sample judgements for demonstration purposes"
         >
           <Wand2 className="size-3.5" /> Demo: load sample judgements
         </button>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-4 space-y-2">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-w-0">
+        <div className="col-span-1 lg:col-span-4 space-y-2 min-w-0">
           <div className="mb-1 flex items-center justify-between px-1 text-[12px] text-ink-muted">
             <span>Included studies ({included.length})</span>
             <span className="tabular">{stageProgress.appraisal}% appraised</span>
@@ -157,7 +159,7 @@ export default function Appraisal() {
           })}
         </div>
 
-        <div className="col-span-8">
+        <div className="col-span-1 lg:col-span-8 min-w-0">
           {selected && (
             <Card key={selected.id} className="animate-fade-in">
               <CardHeader className="border-b border-line pb-4">

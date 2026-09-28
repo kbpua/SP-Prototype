@@ -34,15 +34,15 @@ export default function Configuration() {
     EXTRACTION_FIELDS.filter((f) => f.schemas.some((s) => s.key === key)).length;
 
   return (
-    <div className="mx-auto max-w-[1120px] px-8 py-8">
+    <div className="mx-auto max-w-[1120px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <PageHeader
         step="Stage 1 of 6"
         title="Review configuration"
         description="Define the review question using PICOS, set eligibility criteria, and choose which guideline-aligned field sets the extraction module should populate."
       />
 
-      <div className="grid grid-cols-5 gap-5">
-        <div className="col-span-3 space-y-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 min-w-0">
+        <div className="col-span-1 lg:col-span-3 space-y-5 min-w-0">
           <Card>
             <CardHeader>
               <CardTitle>Review question</CardTitle>
@@ -58,7 +58,7 @@ export default function Configuration() {
                   <div className="mt-6 grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-[13px] font-semibold text-brand-700">
                     {p.letter}
                   </div>
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 space-y-1.5 min-w-0">
                     <Label htmlFor={p.key}>{p.label}</Label>
                     <Textarea
                       id={p.key}
@@ -81,7 +81,7 @@ export default function Configuration() {
                 Criteria are embedded alongside PICOS to rank candidate studies during screening.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-5">
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <CriteriaBuilder
                 label="Inclusion"
                 tone="include"
@@ -98,7 +98,7 @@ export default function Configuration() {
           </Card>
         </div>
 
-        <div className="col-span-2 space-y-5">
+        <div className="col-span-1 lg:col-span-2 space-y-5 min-w-0">
           <Card>
             <CardHeader>
               <CardTitle>Extraction schema</CardTitle>

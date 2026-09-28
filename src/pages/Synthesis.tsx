@@ -36,12 +36,12 @@ export default function Synthesis() {
   );
 
   return (
-    <div className="mx-auto max-w-[1320px] px-8 py-8">
+    <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <PageHeader
         step="Stage 5 of 6"
         title="Evidence synthesis"
         badges={
-          <Badge variant="default">
+          <Badge variant="default" className="whitespace-nowrap">
             <Sigma /> Automated from verified data
           </Badge>
         }
@@ -70,16 +70,16 @@ export default function Synthesis() {
 
       {result ? (
         <>
-          <div className="grid grid-cols-4 gap-4">
-            <Card className="col-span-2 border-brand-200 bg-brand-50/40 px-6 py-5">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <Card className="col-span-1 lg:col-span-2 border-brand-200 bg-brand-50/40 px-5 sm:px-6 py-5">
               <div className="text-[12.5px] font-medium text-brand-800">
                 Pooled {MEASURE_NAMES[measure].toLowerCase()} · random effects
               </div>
-              <div className="mt-1 flex items-baseline gap-3">
-                <span className="text-[40px] font-semibold leading-none tracking-tight text-brand-700">
+              <div className="mt-1 flex flex-wrap items-baseline gap-3">
+                <span className="text-[36px] sm:text-[40px] font-semibold leading-none tracking-tight text-brand-700">
                   <AnimatedNumber value={result.est} digits={2} />
                 </span>
-                <span className="text-[16px] tabular text-ink-soft">
+                <span className="text-[15px] sm:text-[16px] tabular text-ink-soft whitespace-nowrap">
                   95% CI {result.lo.toFixed(2)} to {result.hi.toFixed(2)}
                 </span>
               </div>
@@ -91,7 +91,7 @@ export default function Synthesis() {
               </p>
             </Card>
 
-            <Card className="col-span-2 px-6 py-5">
+            <Card className="col-span-1 lg:col-span-2 px-5 sm:px-6 py-5">
               <div className="flex items-center justify-between">
                 <div className="text-[12.5px] font-medium text-ink-soft">Heterogeneity</div>
                 <Badge variant={result.i2 < 30 ? "default" : result.i2 < 60 ? "amber" : "coral"}>
@@ -107,14 +107,14 @@ export default function Synthesis() {
           </div>
 
           <Card className="mt-5">
-            <CardHeader className="flex-row items-start justify-between">
+            <CardHeader className="flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
                 <CardTitle>Forest plot — primary composite outcome</CardTitle>
                 <CardDescription>
                   Cardiovascular death or worsening heart failure · dapagliflozin vs control
                 </CardDescription>
               </div>
-              <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-soft">
+              <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-soft whitespace-nowrap">
                 <input
                   type="checkbox"
                   className="size-4 accent-[#0f6e56]"
@@ -125,8 +125,10 @@ export default function Synthesis() {
                 {highRobIds.size > 0 && <Badge variant="coral">{highRobIds.size}</Badge>}
               </label>
             </CardHeader>
-            <CardContent>
-              <ForestPlot result={result} inputs={analysed} measure={measure} />
+            <CardContent className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                <ForestPlot result={result} inputs={analysed} measure={measure} />
+              </div>
             </CardContent>
           </Card>
         </>
