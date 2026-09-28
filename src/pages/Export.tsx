@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Segmented } from "@/components/ui/segmented";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
-import { PageHeader } from "@/components/PageHeader";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
 import { activeFieldIds, useReview } from "@/state/ReviewContext";
 import { ACTIVE_REVIEW_ID, CANDIDATE_STUDIES, EXTRACTION_FIELDS, getExtractedFields } from "@/data/mockData";
 import { dersimonianLaird } from "@/lib/meta";
@@ -151,43 +151,42 @@ export default function Export() {
   );
 
   return (
-    <div className="mx-auto max-w-[1240px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+    <PageContainer className="pb-6 lg:pb-8">
       <PageHeader
         step="Stage 6 of 6"
         title="Export"
         description="Download the structured evidence package for the HTAC technical working group. Every value carries its verification status and source location."
       />
 
-      <Card className="overflow-hidden border-brand-200">
-        <div className="flex items-center gap-3 bg-brand-700 px-6 py-4 text-white">
-          <PartyPopper className="size-5 shrink-0" />
-          <div>
-            <div className="text-[15px] font-semibold">Pipeline complete</div>
-            <div className="text-[12.5px] text-brand-100">
-              From {CANDIDATE_STUDIES.length} records to a pooled estimate — with {corrections} human correction(s) applied
-              along the way.
-            </div>
+      <Card className="shrink-0 overflow-hidden border-brand-200">
+        <div className="flex items-center gap-2.5 bg-brand-700 px-5 py-2 text-white">
+          <PartyPopper className="size-4 shrink-0" />
+          <div className="min-w-0 truncate text-[12.5px] text-brand-100">
+            <span className="text-[13.5px] font-semibold text-white">Pipeline complete</span>
+            <span className="mx-1.5">·</span>
+            From {CANDIDATE_STUDIES.length} records to a pooled estimate — with {corrections} human correction(s) applied
+            along the way.
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-y-4 items-stretch px-4 py-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-y-2 items-stretch px-4 py-2.5">
           {funnel.map((f, i) => (
             <div key={f.label} className="relative flex flex-col items-center text-center px-2">
               {i < funnel.length - 1 && (
-                <ChevronRight className="hidden md:block absolute top-6 -right-2.5 size-5 text-brand-300" />
+                <ChevronRight className="hidden md:block absolute top-1/2 -translate-y-1/2 -right-2.5 size-4 text-brand-300" />
               )}
-              <div className="text-[12px] font-medium text-ink-muted">{f.label}</div>
-              <div className="mt-1 text-[30px] sm:text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
+              <div className="text-[11.5px] font-medium text-ink-muted">{f.label}</div>
+              <div className="mt-0.5 text-[24px] font-semibold leading-none tracking-tight tabular text-brand-700">
                 <AnimatedNumber value={f.value} duration={600 + i * 150} />
               </div>
-              <div className="mt-1.5 text-[12px] text-ink-soft">{f.sub}</div>
+              <div className="mt-1 truncate text-[11.5px] text-ink-soft">{f.sub}</div>
             </div>
           ))}
         </div>
       </Card>
 
       <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card className="col-span-1 lg:col-span-2 flex min-h-0 flex-col overflow-hidden">
-          <div className="flex items-center justify-between border-b border-line px-5 py-3">
+        <Card className="col-span-1 lg:col-span-2 flex h-[520px] min-h-0 flex-col overflow-hidden lg:h-[calc(100dvh-var(--topbar-h)-3rem)] lg:min-h-[420px]">
+          <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-3">
             <Segmented<Format>
               size="sm"
               value={format}
@@ -213,19 +212,19 @@ export default function Export() {
           </div>
           <pre
             key={format}
-            className="h-[460px] animate-fade-in overflow-auto whitespace-pre-wrap break-words bg-[#10231d] px-5 py-4 font-mono text-[12px] leading-relaxed text-brand-100 scrollbar-thin"
+            className="min-h-0 flex-1 animate-fade-in overflow-auto whitespace-pre-wrap break-words bg-[#10231d] px-5 py-4 font-mono text-[12px] leading-relaxed text-brand-100 scrollbar-thin"
           >
             {format === "csv" ? content : <Highlighted json={content} />}
           </pre>
         </Card>
 
-        <div className="space-y-4">
+        <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
           <Card>
-            <CardHeader>
+            <CardHeader className="pt-4 pb-2.5">
               <CardTitle>Downloads</CardTitle>
               <CardDescription>Generated from the current verified state</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 pb-4">
               <DownloadRow
                 icon={FileJson}
                 title="Evidence synthesis package"
@@ -247,9 +246,9 @@ export default function Export() {
             </CardContent>
           </Card>
 
-          <Card className="p-5">
+          <Card className="px-5 py-4">
             <div className="text-[12.5px] font-medium text-ink-soft">Package contents</div>
-            <ul className="mt-2.5 space-y-1.5 text-[13px] text-ink">
+            <ul className="mt-2 space-y-1 text-[13px] text-ink">
               {[
                 "PICOS and eligibility criteria",
                 "PRISMA 2020 flow counts",
@@ -263,7 +262,7 @@ export default function Export() {
                 </li>
               ))}
             </ul>
-            <div className="mt-4 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex flex-wrap gap-1.5">
               {(["annex8", "consort", "prisma"] as const)
                 .filter((k) => config.schemas[k])
                 .map((k) => (
@@ -279,7 +278,7 @@ export default function Export() {
           </Button>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -298,7 +297,7 @@ function DownloadRow({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border border-line p-3 text-left transition-all hover:border-brand-300 hover:bg-brand-50/50"
+      className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border border-line px-3 py-2.5 text-left transition-all hover:border-brand-300 hover:bg-brand-50/50"
     >
       <span className="grid size-9 place-items-center rounded-lg bg-brand-50 text-brand-700">
         <Icon className="size-4.5" />

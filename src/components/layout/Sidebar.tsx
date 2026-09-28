@@ -7,10 +7,11 @@ import { MODE_LABEL, STAGES } from "./stages";
 
 export function Sidebar() {
   const { stageProgress } = useReview();
+  const gatePassed = STAGES.map((_, i) => STAGES.slice(0, i + 1).every((st) => stageProgress[st.key] >= 100));
 
   return (
     <aside className="flex w-16 lg:w-64 shrink-0 flex-col border-r border-line bg-white/70 backdrop-blur transition-[width] duration-200">
-      <div className="flex items-center justify-center lg:justify-start gap-3 px-3 lg:px-5 pt-5 pb-6">
+      <div className="flex items-center justify-center lg:justify-start gap-3 px-3 lg:px-5 pt-4 pb-4">
         <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-700 text-white shadow-sm">
           <svg viewBox="0 0 32 32" className="size-6">
             <path
@@ -29,14 +30,14 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 lg:px-3 scrollbar-thin">
+      <nav className="flex-1 overflow-y-auto px-2 lg:px-3 scrollbar-none">
         <NavLink
           to="/"
           end
           title="Dashboard"
           className={({ isActive }) =>
             cn(
-              "mb-5 flex items-center justify-center lg:justify-start gap-3 rounded-lg px-2 lg:px-3 py-2 text-[13.5px] font-medium transition-colors",
+              "mb-3 flex items-center justify-center lg:justify-start gap-3 rounded-lg px-2 lg:px-3 py-2 text-[13.5px] font-medium transition-colors",
               isActive ? "bg-brand-50 text-brand-800" : "text-ink-soft hover:bg-cream-dark/60 hover:text-ink",
             )
           }
@@ -50,14 +51,14 @@ export function Sidebar() {
         <ol className="relative">
           {STAGES.map((s, i) => {
             const pct = stageProgress[s.key];
-            const done = pct >= 100;
+            const done = gatePassed[i];
             const Icon = s.icon;
             return (
               <li key={s.key} className="relative">
                 {i < STAGES.length - 1 && (
                   <span
                     className={cn(
-                      "absolute left-[31px] lg:left-[27px] top-[38px] h-[calc(100%-26px)] w-px transition-colors duration-500",
+                      "absolute left-[31px] lg:left-[27px] top-[34px] h-[calc(100%-26px)] w-px transition-colors duration-500",
                       done ? "bg-brand-400" : "bg-line",
                     )}
                   />
@@ -67,7 +68,7 @@ export function Sidebar() {
                   title={`${s.label} (${MODE_LABEL[s.mode]})`}
                   className={({ isActive }) =>
                     cn(
-                      "group relative flex items-center lg:items-start justify-center lg:justify-start gap-3 rounded-lg px-2 lg:px-3 py-2.5 transition-colors",
+                      "group relative flex items-center lg:items-start justify-center lg:justify-start gap-3 rounded-lg px-2 lg:px-3 py-1.5 transition-colors",
                       isActive ? "bg-brand-50" : "hover:bg-cream-dark/60",
                     )
                   }
@@ -116,7 +117,7 @@ export function Sidebar() {
         </ol>
       </nav>
 
-      <div className="m-3 hidden lg:block rounded-lg border border-line bg-cream px-3 py-3">
+      <div className="mx-3 my-2 hidden lg:block rounded-lg border border-line bg-cream px-3 py-2">
         <div className="flex items-start gap-2 text-[11.5px] leading-relaxed text-ink-muted">
           <BookOpen className="mt-0.5 size-3.5 shrink-0 text-brand-700" />
           <span>
@@ -131,7 +132,7 @@ export function Sidebar() {
         <BookOpen className="size-4 text-brand-700" />
       </div>
 
-      <div className="flex items-center justify-center lg:justify-start gap-3 border-t border-line px-2 lg:px-5 py-4">
+      <div className="flex items-center justify-center lg:justify-start gap-3 border-t border-line px-2 lg:px-5 py-3">
         <div
           className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-100 text-[12px] font-semibold text-brand-800"
           title={`${ANALYST.name} · ${ANALYST.role}`}

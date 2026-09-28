@@ -5,9 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { PageHeader, StageFooter } from "@/components/PageHeader";
+import { PageContainer, PageHeader, StageFooter } from "@/components/PageHeader";
 import { useReview, type ReviewConfig } from "@/state/ReviewContext";
-import { EXTRACTION_FIELDS, SCHEMA_DESCRIPTIONS, SCHEMA_LABELS, type SchemaKey } from "@/data/mockData";
+import { SCHEMA_DESCRIPTIONS, SCHEMA_LABELS, type SchemaKey } from "@/data/mockData";
 import type { EffectMeasure } from "@/lib/meta";
 import { cn } from "@/lib/utils";
 
@@ -30,11 +30,8 @@ export default function Configuration() {
   const navigate = useNavigate();
   const { config, updateConfig } = useReview();
 
-  const schemaFieldCount = (key: SchemaKey) =>
-    EXTRACTION_FIELDS.filter((f) => f.schemas.some((s) => s.key === key)).length;
-
   return (
-    <div className="mx-auto max-w-[1120px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+    <PageContainer>
       <PageHeader
         step="Stage 1 of 6"
         title="Review configuration"
@@ -128,7 +125,6 @@ export default function Configuration() {
                     <span className="flex-1">
                       <span className="flex items-center justify-between">
                         <span className="text-[14px] font-semibold text-ink">{SCHEMA_LABELS[key]}</span>
-                        <Badge variant={on ? "default" : "neutral"}>{schemaFieldCount(key)} fields</Badge>
                       </span>
                       <span className="mt-1 block text-[12.5px] leading-relaxed text-ink-muted">
                         {SCHEMA_DESCRIPTIONS[key]}
@@ -172,7 +168,7 @@ export default function Configuration() {
           </Card>
 
           <Card className="bg-cream/60 p-5">
-            <div className="text-[12.5px] font-medium text-ink-soft">Search sources (pre-configured)</div>
+            <div className="text-[12.5px] font-medium text-ink-soft">Search sources (analyst-supplied)</div>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {["PubMed / MEDLINE", "Cochrane CENTRAL", "Embase", "HERDIN (PH)"].map((s) => (
                 <Badge key={s} variant="outline">
@@ -184,9 +180,8 @@ export default function Configuration() {
         </div>
       </div>
 
-      <StageFooter note="All fields are saved automatically.">
+      <StageFooter pinned note="All fields are saved automatically.">
         <Button
-          size="lg"
           onClick={() => {
             updateConfig({ configured: true });
             navigate("/review/screening");
@@ -196,7 +191,7 @@ export default function Configuration() {
           <ArrowRight />
         </Button>
       </StageFooter>
-    </div>
+    </PageContainer>
   );
 }
 

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { PageHeader, StageFooter } from "@/components/PageHeader";
+import { PageContainer, PageHeader, StageFooter } from "@/components/PageHeader";
 import {
   appraisalItemCount,
   useReview,
@@ -63,7 +63,7 @@ export default function Appraisal() {
 
   if (included.length === 0) {
     return (
-      <div className="mx-auto max-w-[1120px] px-8 py-8">
+      <PageContainer className="pb-8">
         <PageHeader step="Stage 3 of 6" title="Critical appraisal" />
         <Card className="py-16 text-center">
           <ShieldCheck className="mx-auto size-10 text-brand-300" />
@@ -73,7 +73,7 @@ export default function Appraisal() {
             <ArrowLeft /> Back to screening
           </Button>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -81,7 +81,7 @@ export default function Appraisal() {
   const next = included[selectedIndex + 1];
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+    <PageContainer>
       <PageHeader
         step="Stage 3 of 6"
         title="Critical appraisal"
@@ -93,24 +93,15 @@ export default function Appraisal() {
         description="Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials and AMSTAR 2 for systematic reviews, as recommended by the Philippine HTA Methods Guide."
       />
 
-      <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-xl border border-flag/35 bg-flag-soft/70 px-4 sm:px-5 py-4">
-        <div className="flex items-start gap-4 flex-1 min-w-0">
-          <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-white text-[#854408] shadow-sm">
-            <BotOff className="size-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-semibold text-[#7a430d]">Automation is intentionally disabled at this stage</div>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-[#854408]">
-              Risk-of-bias judgements depend on expert interpretation of trial conduct. The system provides no automated
-              suggestions here — every judgement and justification is recorded as the analyst's own, forming an auditable
-              human checkpoint between screening and extraction.
-            </p>
-          </div>
+      <div className="mb-5 flex items-center gap-3 rounded-lg border border-flag/35 bg-flag-soft/70 px-3.5 py-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-[13px] font-medium text-[#7a430d]">
+          <BotOff className="size-4 shrink-0" />
+          <span className="truncate">Human-only step: no automated suggestions</span>
         </div>
         <button
           type="button"
           onClick={loadSampleAppraisal}
-          className="flex shrink-0 whitespace-nowrap cursor-pointer items-center gap-1.5 self-start sm:self-center rounded-md border border-dashed border-flag/40 px-2.5 py-1.5 text-[11.5px] font-medium text-[#854408] hover:bg-white/60"
+          className="flex shrink-0 whitespace-nowrap cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-flag/40 px-2.5 py-1 text-[11.5px] font-medium text-[#854408] hover:bg-white/60"
           title="Loads pre-written sample judgements for demonstration purposes"
         >
           <Wand2 className="size-3.5" /> Demo: load sample judgements
@@ -118,7 +109,7 @@ export default function Appraisal() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-w-0">
-        <div className="col-span-1 lg:col-span-4 space-y-2 min-w-0">
+        <div className="col-span-1 lg:col-span-4 space-y-2 min-w-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100dvh-var(--topbar-h)-6rem)] lg:overflow-y-auto lg:-m-1 lg:p-1 scrollbar-thin">
           <div className="mb-1 flex items-center justify-between px-1 text-[12px] text-ink-muted">
             <span>Included studies ({included.length})</span>
             <span className="tabular">{stageProgress.appraisal}% appraised</span>
@@ -135,7 +126,7 @@ export default function Appraisal() {
                 type="button"
                 onClick={() => setSelectedId(s.id)}
                 className={cn(
-                  "w-full cursor-pointer rounded-xl border p-3.5 text-left transition-all",
+                  "w-full cursor-pointer rounded-xl border px-3.5 py-2 text-left transition-all",
                   active ? "border-brand-400 bg-white shadow-sm ring-2 ring-brand-500/10" : "border-line bg-white/60 hover:bg-white",
                 )}
               >
@@ -146,8 +137,8 @@ export default function Appraisal() {
                   </span>
                   <Badge variant={overall.tone}>{overall.label}</Badge>
                 </div>
-                <div className="mt-1 line-clamp-1 text-[12px] text-ink-muted">{s.title}</div>
-                <div className="mt-2.5 flex items-center gap-2">
+                <div className="mt-0.5 line-clamp-1 text-[12px] text-ink-muted">{s.title}</div>
+                <div className="mt-2 flex items-center gap-2">
                   <Progress value={(done / totalItems) * 100} className="h-1" />
                   <span className="shrink-0 text-[11px] tabular text-ink-muted">
                     {done}/{totalItems}
@@ -206,18 +197,19 @@ export default function Appraisal() {
       />
 
       <StageFooter
+        pinned
         note={
           stageProgress.appraisal < 100
             ? "You can proceed now and return to finish appraisal later."
             : "All included studies have been appraised."
         }
       >
-        <Button size="lg" onClick={() => navigate("/review/extraction")}>
+        <Button onClick={() => navigate("/review/extraction")}>
           Proceed to extraction
           <ArrowRight />
         </Button>
       </StageFooter>
-    </div>
+    </PageContainer>
   );
 
   function renderRob2(study: CandidateStudy) {

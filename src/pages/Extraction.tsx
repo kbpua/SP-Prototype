@@ -233,14 +233,16 @@ export default function Extraction() {
     );
   }
 
-  const m = doc.trial.metrics;
+  const confidenceCounts: Record<Confidence, number> = { high: 0, medium: 0, low: 0 };
+  for (const f of fields) confidenceCounts[f.confidence]++;
   const docIndex = extractable.findIndex((s) => s.id === doc.id);
   const nextDoc = extractable[docIndex + 1];
   const nonExtractable = included.length - extractable.length;
 
   return (
-    <div className="mx-auto max-w-[1560px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+    <div className="mx-auto flex max-w-[1560px] flex-col px-4 sm:px-6 lg:px-8 py-6 lg:py-8 xl:h-[calc(100dvh-var(--topbar-h))] xl:py-4">
       <PageHeader
+        className="shrink-0 pb-3 [&_p]:mt-1 [&_p]:truncate"
         step="Stage 4 of 6 · Core module"
         title="Extraction & verification"
         badges={
@@ -254,16 +256,11 @@ export default function Extraction() {
             <AboutAutomation text="Values are extracted using layout-aware parsing and a fine-tuned entity recognition model, mapped to Annex 8, CONSORT, and PRISMA fields. Every value is verified by the analyst before synthesis." />
           </>
         }
-        description="Each value is extracted from the trial report, mapped to guideline fields, and linked to its exact source location. The analyst verifies every field before it can enter synthesis."
-        actions={
-          <Button variant="outline" className="whitespace-nowrap" onClick={() => acceptHighConfidence(extractable.map((s) => s.id))}>
-            <CheckCheck /> Accept high-confidence (all documents)
-          </Button>
-        }
+        description="Verify each extracted value against its highlighted source before it enters synthesis."
       />
 
       {/* Document tabs */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
         {extractable.map((s) => {
           const st = docStats(s);
           const complete = st.done >= st.total;
@@ -274,7 +271,7 @@ export default function Extraction() {
               type="button"
               onClick={() => setDocId(s.id)}
               className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all",
+                "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-1.5 text-left transition-all",
                 on ? "border-brand-500 bg-white shadow-sm ring-2 ring-brand-500/15" : "border-line bg-white/60 hover:bg-white",
               )}
             >
@@ -302,35 +299,48 @@ export default function Extraction() {
         )}
       </div>
 
-      {/* Performance strip */}
-      <div className="mb-4 max-w-full overflow-x-auto">
-        <Card className="grid min-w-[760px] xl:min-w-0 grid-cols-7 divide-x divide-line">
-          <div className="col-span-2 flex flex-col justify-center px-4 xl:px-5 py-3">
-            <div className="text-[12px] font-medium text-ink-soft">Extraction benchmark · this document</div>
-            <div className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">
-              Compared against dual-annotator gold standard (mock evaluation)
-            </div>
-          </div>
-          <Metric label="Precision" value={m.precision} />
-          <Metric label="Recall" value={m.recall} />
-          <Metric label="F1 score" value={m.f1} highlight />
-          <Metric label="Cohen's κ" value={m.kappa} sub="annotator agreement" />
-          <div className="flex flex-col justify-center px-4 xl:px-5 py-3">
-            <div className="text-[11.5px] text-ink-muted">Fields verified</div>
-            <div className="text-[20px] xl:text-[22px] font-semibold tabular text-ink">
+      {/* Verification strip */}
+      <div className="mb-3 max-w-full shrink-0 overflow-x-auto">
+        <Card className="grid min-h-14 min-w-[560px] grid-cols-[minmax(0,1fr)_minmax(0,2fr)] divide-x divide-line">
+          <div className="flex items-center gap-3 px-4 xl:px-5 py-2">
+            <div className="shrink-0 text-[11.5px] text-ink-muted">Fields verified</div>
+            <div className="shrink-0 text-[20px] font-semibold leading-none tabular text-ink">
               <AnimatedNumber value={resolved} />
               <span className="text-[14px] font-normal text-ink-muted">/{fields.length}</span>
             </div>
-            <Progress value={(resolved / Math.max(1, fields.length)) * 100} className="mt-1 h-1" />
+            <Progress value={(resolved / Math.max(1, fields.length)) * 100} className="h-1 min-w-10 flex-1" />
+          </div>
+          <div className="flex items-center gap-3 px-4 xl:px-5 py-2">
+            <div className="shrink-0 text-[11.5px] text-ink-muted">Model confidence</div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] tabular text-ink-soft">
+              <span>
+                <span className="text-[18px] font-semibold text-brand-700">{confidenceCounts.high}</span> high
+              </span>
+              <span className="text-ink-muted">·</span>
+              <span>
+                <span className="text-[18px] font-semibold text-[#b45309]">{confidenceCounts.medium}</span> medium
+              </span>
+              <span className="text-ink-muted">·</span>
+              <span className="flex items-center gap-1.5">
+                <span>
+                  <span className="text-[18px] font-semibold text-coral">{confidenceCounts.low}</span> low
+                </span>
+                {confidenceCounts.low > 0 && (
+                  <span className="whitespace-nowrap rounded border border-coral/40 bg-coral-soft px-1.5 py-px text-[10.5px] font-medium text-coral">
+                    review first
+                  </span>
+                )}
+              </span>
+            </div>
           </div>
         </Card>
       </div>
 
       {/* Split pane */}
-      <div className="grid h-[calc(100vh-150px)] min-h-[620px] grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:min-h-[280px] xl:flex-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)] xl:grid-rows-[minmax(0,1fr)]">
         {/* Left: document */}
-        <Card className="relative flex min-h-0 flex-col overflow-hidden bg-[#eeebe3]">
-          <div className="flex items-center justify-between border-b border-line bg-white/90 px-4 py-2.5">
+        <Card className="relative flex h-[75vh] min-h-[520px] flex-col overflow-hidden bg-[#eeebe3] xl:h-auto xl:min-h-0">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-white/90 px-4 py-2.5">
             <div className="flex min-w-0 items-center gap-2 text-[12.5px]">
               <FileText className="size-4 shrink-0 text-coral" />
               <span className="truncate font-medium text-ink">
@@ -338,7 +348,7 @@ export default function Extraction() {
               </span>
               <span className="shrink-0 text-ink-muted">· 2 pages</span>
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-ink-muted">
+            <div className="flex shrink-0 items-center gap-3 text-[11px] text-ink-muted">
               <Legend cls="bg-brand-100 ring-brand-400" label="High" />
               <Legend cls="bg-flag-soft ring-[#b45309]" label="Medium" />
               <Legend cls="bg-coral-soft ring-coral" label="Low" />
@@ -399,12 +409,12 @@ export default function Extraction() {
         </Card>
 
         {/* Right: fields */}
-        <Card className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-line px-4 py-3">
+        <Card className="flex h-[75vh] min-h-[520px] flex-col overflow-hidden xl:h-auto xl:min-h-0">
+          <div className="shrink-0 border-b border-line px-4 py-2.5">
             <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-[14px] font-semibold text-ink">{doc.title}</div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-muted">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink" title={doc.title}>{doc.title}</div>
+                <div className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-ink-muted">
                   Schema:
                   {enabledSchemas.map((k) => (
                     <Badge key={k} variant="neutral" className="text-[10.5px]">
@@ -414,8 +424,9 @@ export default function Extraction() {
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
               <Segmented<FieldFilter>
+                className="shrink-0 whitespace-nowrap"
                 size="sm"
                 value={filter}
                 onChange={setFilter}
@@ -486,18 +497,31 @@ export default function Extraction() {
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-line bg-cream/60 px-4 py-2.5">
-            <div className="flex items-center gap-1.5 text-[11.5px] text-ink-muted">
-              <Keyboard className="size-3.5" />
-              <Kbd>↑</Kbd>
-              <Kbd>↓</Kbd> move · <Kbd>A</Kbd> accept · <Kbd>C</Kbd> correct · <Kbd>R</Kbd> reject · <Kbd>D</Kbd> adjudicate
+          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line bg-cream/60 px-4 py-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11.5px] text-ink-muted [&>span]:whitespace-nowrap">
+              <Keyboard className="size-3.5 shrink-0" />
+              <span>
+                <Kbd>↑</Kbd> <Kbd>↓</Kbd> move ·
+              </span>
+              <span>
+                <Kbd>A</Kbd> accept ·
+              </span>
+              <span>
+                <Kbd>C</Kbd> correct ·
+              </span>
+              <span>
+                <Kbd>R</Kbd> reject ·
+              </span>
+              <span>
+                <Kbd>D</Kbd> adjudicate
+              </span>
             </div>
             {resolved >= fields.length && nextDoc ? (
               <Button size="sm" onClick={() => setDocId(nextDoc.id)}>
                 Next document <ArrowRight />
               </Button>
             ) : (
-              <span className="text-[12px] tabular text-ink-soft">
+              <span className="shrink-0 whitespace-nowrap text-[12px] tabular text-ink-soft">
                 {fields.length - resolved} remaining
               </span>
             )}
@@ -506,6 +530,7 @@ export default function Extraction() {
       </div>
 
       <StageFooter
+        className="mt-4 shrink-0 pt-3 xl:mt-3 xl:pt-2.5"
         note={
           allDocsDone
             ? "All extracted fields have been verified. Verified values will be used for synthesis."
@@ -517,18 +542,6 @@ export default function Extraction() {
           <ArrowRight />
         </Button>
       </StageFooter>
-    </div>
-  );
-}
-
-function Metric({ label, value, sub, highlight }: { label: string; value: number; sub?: string; highlight?: boolean }) {
-  return (
-    <div className="flex flex-col justify-center px-3 xl:px-5 py-3">
-      <div className="text-[11.5px] text-ink-muted whitespace-nowrap">{label}</div>
-      <div className={cn("text-[20px] xl:text-[22px] font-semibold tabular", highlight ? "text-brand-700" : "text-ink")}>
-        <AnimatedNumber value={value} digits={value < 1 && label !== "F1 score" ? 2 : 3} />
-      </div>
-      {sub && <div className="-mt-0.5 text-[10.5px] text-ink-muted truncate">{sub}</div>}
     </div>
   );
 }

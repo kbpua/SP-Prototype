@@ -53,6 +53,15 @@
 }
 
 @layer base {
+  /* Rendered height of the TopBar (its rows never wrap); used to size single-viewport workbench pages. */
+  :root {
+    --topbar-h: 77px;
+  }
+  @media (min-width: 1280px) {
+    :root {
+      --topbar-h: 82px;
+    }
+  }
   html,
   body,
   #root {
@@ -74,6 +83,12 @@
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: #d6d0c2 transparent;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }
 

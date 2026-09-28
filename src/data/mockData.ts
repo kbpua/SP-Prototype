@@ -1059,7 +1059,7 @@ export const DEFAULT_REVIEW_CONFIG = {
     "Adults with HFrEF (LVEF ≤ 40%)",
     "Dapagliflozin vs placebo / standard care",
     "Reports CV death or HF events",
-    "English or Filipino language",
+    "English language",
   ],
   exclusion: [
     "HFpEF / HFmrEF populations",

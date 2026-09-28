@@ -31,9 +31,49 @@ export function PageHeader({
   );
 }
 
-export function StageFooter({ children, note }: { children: ReactNode; note?: ReactNode }) {
+/** Shared page edges (matches Screening). Fills the scroll area so a pinned StageFooter sits at the bottom. */
+export function PageContainer({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className="mt-8 flex items-center justify-between gap-4 border-t border-line pt-5">
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-[1400px] min-h-[calc(100dvh-var(--topbar-h))] flex-col px-4 sm:px-6 lg:px-8 pt-6 lg:pt-8",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function StageFooter({
+  children,
+  note,
+  className,
+  pinned,
+}: {
+  children: ReactNode;
+  note?: ReactNode;
+  className?: string;
+  pinned?: boolean;
+}) {
+  if (pinned) {
+    return (
+      <>
+        <div className="h-6 shrink-0" />
+        <div
+          className={cn(
+            "sticky bottom-0 z-20 mt-auto flex items-center justify-between gap-4 border-t border-line bg-cream/95 py-2.5 backdrop-blur",
+            className,
+          )}
+        >
+          <div className="min-w-0 text-[13px] text-ink-muted">{note}</div>
+          <div className="flex shrink-0 items-center gap-2">{children}</div>
+        </div>
+      </>
+    );
+  }
+  return (
+    <div className={cn("mt-8 flex items-center justify-between gap-4 border-t border-line pt-5", className)}>
       <div className="text-[13px] text-ink-muted">{note}</div>
       <div className="flex items-center gap-2">{children}</div>
     </div>

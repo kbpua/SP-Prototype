@@ -15,6 +15,7 @@ export function TopBar() {
   const overall = Math.round(
     Object.values(stageProgress).reduce((a, b) => a + b, 0) / STAGES.length,
   );
+  const gatePassed = STAGES.map((_, i) => STAGES.slice(0, i + 1).every((st) => stageProgress[st.key] >= 100));
 
   return (
     <header className="relative shrink-0 border-b border-line bg-white/80 backdrop-blur">
@@ -36,6 +37,7 @@ export function TopBar() {
                 <Badge variant="default" className="ml-1 tabular whitespace-nowrap">
                   In progress · {overall}%
                 </Badge>
+                <PrototypeBadge />
                 {/* Guideline badge: icon + tooltip below xl, full text at xl and above */}
                 <span
                   className="hidden xl:inline-flex items-center rounded-full border border-brand-200/60 bg-brand-50/60 px-2 py-0.5 text-[10.5px] font-medium text-brand-800 whitespace-nowrap"
@@ -56,6 +58,7 @@ export function TopBar() {
                 Health Technology Assessment Council · Secretariat
               </div>
             )}
+            {!inReview && <PrototypeBadge />}
           </div>
 
           <Button
@@ -92,7 +95,7 @@ export function TopBar() {
           {inReview && (
             <ol className="flex items-center shrink-0">
               {STAGES.map((s, i) => {
-                const done = stageProgress[s.key] >= 100;
+                const done = gatePassed[i];
                 const active = i === currentIndex;
                 return (
                   <li key={s.key} className="flex items-center">
@@ -137,5 +140,13 @@ export function TopBar() {
         </div>
       </div>
     </header>
+  );
+}
+
+function PrototypeBadge() {
+  return (
+    <span className="shrink-0 whitespace-nowrap rounded border border-line bg-cream px-1.5 py-px text-[10.5px] font-medium text-ink-muted">
+      Prototype · simulated data
+    </span>
   );
 }

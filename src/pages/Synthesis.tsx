@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowRight, Info, Sigma } from "lucide-react";
+import { AlertTriangle, ArrowRight, Info } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Segmented } from "@/components/ui/segmented";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
-import { PageHeader, StageFooter } from "@/components/PageHeader";
+import { PageContainer, PageHeader, StageFooter } from "@/components/PageHeader";
 import { useReview } from "@/state/ReviewContext";
 import { dersimonianLaird, formatP, type EffectMeasure, type PooledResult, type StudyInput } from "@/lib/meta";
 import { buildStudyInputs, finalValues, robOverall } from "@/lib/review";
@@ -36,16 +36,11 @@ export default function Synthesis() {
   );
 
   return (
-    <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+    <PageContainer>
       <PageHeader
         step="Stage 5 of 6"
         title="Evidence synthesis"
-        badges={
-          <Badge variant="default" className="whitespace-nowrap">
-            <Sigma /> Automated from verified data
-          </Badge>
-        }
-        description="Human-verified outcome data are pooled using a random-effects meta-analysis. Corrections made during verification flow directly into these estimates."
+        description="Verified outcome data pooled with a random-effects meta-analysis."
         actions={
           <Segmented<EffectMeasure>
             value={measure}
@@ -200,13 +195,13 @@ export default function Synthesis() {
         </CardContent>
       </Card>
 
-      <StageFooter note="Results are recalculated whenever verified values change.">
-        <Button size="lg" onClick={() => navigate("/review/export")}>
+      <StageFooter pinned note="Results are recalculated whenever verified values change.">
+        <Button onClick={() => navigate("/review/export")}>
           Export results
           <ArrowRight />
         </Button>
       </StageFooter>
-    </div>
+    </PageContainer>
   );
 }
 

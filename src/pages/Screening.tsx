@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
-  ArrowDown,
   ArrowRight,
   Check,
   ChevronDown,
@@ -134,23 +133,24 @@ export default function Screening() {
   }, [counts]);
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pt-4 pb-6">
-      <PageHeader
-        step="Stage 2 of 6"
-        title="Title and abstract screening"
-        badges={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="default" className="whitespace-nowrap">
-              <Sparkles /> Ranked by system · analyst decides
-            </Badge>
-            <AboutAutomation text="Records are ranked by embedding similarity to the PICOS question. The system suggests a decision and rationale; the analyst makes and logs every decision." />
-          </div>
-        }
-        description="Candidate records are ranked by embedding similarity to the PICOS question and eligibility criteria. Every include or exclude decision is made by the analyst and logged for the PRISMA flow diagram."
-      />
+    <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pt-4 pb-6 lg:h-[calc(100dvh-var(--topbar-h))] lg:pb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] gap-5 min-w-0 lg:h-full">
+        <div className="col-span-1 lg:col-span-8 min-w-0 lg:min-h-0 lg:overflow-y-auto lg:pr-1.5 scrollbar-thin">
+          <PageHeader
+            className="pb-4"
+            step="Stage 2 of 6"
+            title="Title and abstract screening"
+            badges={
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="default" className="whitespace-nowrap">
+                  <Sparkles /> Ranked by system · analyst decides
+                </Badge>
+                <AboutAutomation text="Records are ranked by embedding similarity to the PICOS question. The system suggests a decision and rationale; the analyst makes and logs every decision." />
+              </div>
+            }
+            description="Candidate records are ranked by embedding similarity to the PICOS question and eligibility criteria. Every include or exclude decision is made by the analyst and logged for the PRISMA flow diagram."
+          />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-w-0">
-        <div className="col-span-1 lg:col-span-8 min-w-0">
           <Card className="mb-3 px-4 py-2.5 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2 text-[12.5px] font-semibold text-ink">
@@ -186,7 +186,7 @@ export default function Screening() {
             <span className="text-[11.5px] text-ink-muted whitespace-nowrap">Sorted by relevance score</span>
           </div>
 
-          <div className="space-y-2.5 pb-8">
+          <div className="space-y-2.5 pb-8 lg:pb-2">
             {list.map((s) => (
               <StudyRow
                 key={s.id}
@@ -206,21 +206,20 @@ export default function Screening() {
           </div>
         </div>
 
-        <div className="col-span-1 lg:col-span-4 min-w-0">
-          <div className="sticky top-4 space-y-3.5">
+        <div className="col-span-1 lg:col-span-4 min-w-0 lg:min-h-0">
+          <div className="flex flex-col gap-3 lg:h-full lg:min-h-0">
             <PrismaPanel
               total={total}
               screened={screened}
               included={counts.include}
               excluded={counts.exclude}
               maybe={counts.maybe}
-              undecided={counts.undecided}
               duplicatesRemoved={duplicatesRemoved}
               reasons={reasons}
             />
 
             {/* Dynamic CTA Block below PRISMA flow */}
-            <div className="space-y-2.5 rounded-xl border border-line bg-white p-3.5 shadow-2xs">
+            <div className="shrink-0 space-y-2 rounded-xl border border-line bg-white p-3 shadow-2xs">
               <Button
                 size="lg"
                 className="w-full justify-center shadow-xs"
@@ -245,10 +244,11 @@ export default function Screening() {
               <button
                 type="button"
                 onClick={fillRemaining}
-                className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-line py-2 text-[12px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700 bg-cream/40"
+                title="Demo shortcut: fill remaining with reference decisions"
+                className="flex w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-dashed border-line px-2 py-1.5 text-[11.5px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700 bg-cream/40"
               >
-                <Wand2 className="size-3.5" />
-                Demo shortcut: fill remaining with reference decisions
+                <Wand2 className="size-3.5 shrink-0" />
+                <span className="truncate">Demo shortcut: fill remaining with reference decisions</span>
               </button>
             </div>
           </div>
@@ -539,7 +539,6 @@ function PrismaPanel({
   included,
   excluded,
   maybe,
-  undecided,
   duplicatesRemoved,
   reasons,
 }: {
@@ -548,17 +547,13 @@ function PrismaPanel({
   included: number;
   excluded: number;
   maybe: number;
-  undecided: number;
   duplicatesRemoved: number;
   reasons: [string, number][];
 }) {
   return (
-    <Card className="overflow-hidden shadow-xs">
-      <div className="flex items-center justify-between border-b border-line bg-cream/60 px-4 py-2.5">
-        <div>
-          <div className="text-[13.5px] font-semibold text-ink">PRISMA 2020 flow (simplified)</div>
-          <div className="text-[11px] text-ink-muted">Updates live with each decision</div>
-        </div>
+    <Card className="flex min-h-0 flex-col overflow-hidden shadow-xs">
+      <div className="flex shrink-0 items-center justify-between border-b border-line bg-cream/60 px-4 py-2.5">
+        <div className="text-[13.5px] font-semibold text-ink">PRISMA 2020 flow (simplified)</div>
         <div className="flex items-center gap-1.5">
           <span className="relative flex size-2">
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-400 opacity-60" />
@@ -568,109 +563,52 @@ function PrismaPanel({
         </div>
       </div>
 
-      <div className="space-y-1.5 p-3.5">
-        {/* Step 1: Identification */}
-        <FlowRow
-          phase="Identification"
-          label="Records identified"
-          value={total}
-          sub="4 databases via RIS/CSV (PubMed, CENTRAL, Embase, HERDIN)"
-        />
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3 scrollbar-thin">
+        <div className="overflow-hidden rounded-lg border border-line bg-white shadow-2xs divide-y divide-line">
+          <FlowRow label="Records identified" value={total} />
+          <FlowRow label="Duplicates removed" value={duplicatesRemoved} />
+        </div>
 
-        <Arrow />
+        <div className="rounded-lg border border-line bg-white shadow-2xs">
+          <FlowRow label="Records screened" value={screened} />
+        </div>
 
-        {/* Step 2: Deduplication */}
-        <FlowRow
-          phase="Deduplication"
-          label="Duplicate records removed"
-          value={duplicatesRemoved}
-          sub="Flagged before screening (DAPA-ASIA Embase record)"
-        />
-
-        <Arrow />
-
-        {/* Step 3: Screening */}
-        <FlowRow
-          phase="Screening"
-          label="Records screened"
-          value={screened}
-          sub={`${screened} of ${total - duplicatesRemoved} unique · ${undecided + maybe} awaiting decision`}
-        />
-
-        {/* Records Excluded */}
-        <DashedConnector label="Excluded" />
-
-        <div className="rounded-lg border border-coral/30 bg-coral-soft/50 p-3 shadow-2xs">
-          <div className="flex items-baseline justify-between gap-2">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#991b1b]">
-                Screening
-              </div>
-              <div className="text-[13px] font-semibold text-[#991b1b]">
-                Records excluded
-              </div>
+        <div className="rounded-lg border border-coral/30 bg-coral-soft/50 shadow-2xs">
+          <FlowRow label="Records excluded" value={excluded} className="font-semibold text-[#991b1b]" valueClassName="font-bold" />
+          {excluded > 0 && reasons.length > 0 && (
+            <div className="-mt-1 flex flex-wrap gap-1 px-3 pb-2">
+              {reasons.map(([r, n]) => (
+                <span
+                  key={r}
+                  title={r}
+                  className="inline-flex max-w-full items-center gap-1 rounded border border-coral/25 bg-white/80 px-1.5 text-[10.5px] leading-[18px] text-ink-soft"
+                >
+                  <span className="truncate">{r}</span>
+                  <span className="shrink-0 font-semibold tabular text-[#991b1b]">{n}</span>
+                </span>
+              ))}
             </div>
-            <span className="text-[18px] font-bold tabular text-[#991b1b] leading-none">
-              <AnimatedNumber value={excluded} />
-            </span>
-          </div>
-
-          {reasons.length > 0 ? (
-            <div className="mt-2 pt-2 border-t border-coral/25">
-              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[#991b1b] mb-1.5">
-                Exclusion rationales:
-              </div>
-              <div className="space-y-1 max-h-[140px] overflow-y-auto scrollbar-thin pr-0.5">
-                {reasons.map(([r, n]) => (
-                  <div
-                    key={r}
-                    className="flex items-center justify-between gap-2 text-[11.5px] text-ink-soft bg-white/80 px-2.5 py-1 rounded border border-coral/20"
-                  >
-                    <span title={r} className="truncate font-medium">
-                      {r}
-                    </span>
-                    <span className="tabular font-bold text-[#991b1b] shrink-0 bg-coral/10 px-1.5 py-0.5 rounded text-[10.5px]">
-                      {n}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-1 text-[11px] text-ink-muted">0 excluded so far</div>
           )}
         </div>
 
-        <Arrow />
-
-        {/* Step 4: Included */}
-        <div className="rounded-lg border-2 border-brand-500 bg-brand-50/90 p-3.5 shadow-xs">
-          <div className="flex items-baseline justify-between gap-2">
-            <div>
-              <div className="text-[10.5px] font-bold uppercase tracking-wider text-brand-700">
-                Included
-              </div>
-              <div className="text-[13.5px] font-semibold text-brand-950 mt-0.5">
-                Studies included in review
-              </div>
-              <div className="text-[11px] text-brand-800/80 mt-0.5">
-                Carried forward into Critical Appraisal
-              </div>
-            </div>
-            <span className="text-[26px] font-extrabold tabular text-brand-700 leading-none">
-              <AnimatedNumber value={included} />
-            </span>
-          </div>
-
+        <div className="rounded-lg border-2 border-brand-500 bg-brand-50/90 shadow-xs">
+          <FlowRow
+            label="Studies included"
+            value={included}
+            className="font-semibold text-brand-800"
+            valueClassName="text-[22px] font-extrabold text-brand-700"
+          />
           {maybe > 0 && (
-            <div className="mt-2 text-[11px] font-medium text-[#854408] bg-flag-soft/60 px-2 py-1 rounded border border-flag/30 text-center">
-              {maybe} marked “Maybe” · flagged for full-text
+            <div className="px-3 pb-2">
+              <span className="inline-flex rounded border border-flag/30 bg-flag-soft/60 px-1.5 py-0.5 text-[11px] font-medium text-[#854408]">
+                {maybe} marked “Maybe” · flagged for full-text
+              </span>
             </div>
           )}
         </div>
       </div>
 
-      <div className="border-t border-line bg-cream/40 px-4 py-2.5">
+      <div className="shrink-0 border-t border-line bg-cream/40 px-4 py-2.5">
         <div className="mb-1 flex justify-between text-[11.5px] text-ink-muted">
           <span>Screening progress</span>
           <span className="tabular font-semibold text-ink-soft">
@@ -684,52 +622,23 @@ function PrismaPanel({
 }
 
 function FlowRow({
-  phase,
   label,
   value,
-  sub,
+  className,
+  valueClassName,
 }: {
-  phase: string;
   label: string;
   value: number;
-  sub: string;
+  className?: string;
+  valueClassName?: string;
 }) {
   return (
-    <div className="rounded-lg border border-line bg-white p-3 shadow-2xs hover:border-brand-200 transition-colors">
-      <div className="flex items-baseline justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
-            {phase}
-          </div>
-          <div className="text-[13px] font-medium text-ink truncate mt-0.5">
-            {label}
-          </div>
-        </div>
-        <div className="tabular font-bold text-[18px] text-ink shrink-0 leading-none">
-          <AnimatedNumber value={value} />
-        </div>
-      </div>
-      <div className="text-[11px] text-ink-muted truncate mt-1">
-        {sub}
-      </div>
+    <div className="flex h-10 items-center justify-between gap-2 px-3">
+      <span className={cn("truncate text-[13px] font-medium text-ink", className)}>{label}</span>
+      <span className={cn("shrink-0 text-[18px] font-bold leading-none tabular", className, valueClassName)}>
+        <AnimatedNumber value={value} />
+      </span>
     </div>
   );
 }
 
-function Arrow() {
-  return (
-    <div className="flex justify-center py-0.5">
-      <ArrowDown className="size-3.5 text-ink-muted/40" />
-    </div>
-  );
-}
-
-function DashedConnector({ label }: { label?: string }) {
-  return (
-    <div className="flex items-center justify-center gap-1.5 py-0.5">
-      <div className="h-2 w-0 border-r border-dashed border-coral/40" />
-      {label && <span className="text-[9.5px] uppercase tracking-wider text-coral font-semibold">{label}</span>}
-      <div className="h-2 w-0 border-r border-dashed border-coral/40" />
-    </div>
-  );
-}
