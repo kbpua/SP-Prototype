@@ -1,23 +1,33 @@
 import { useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Check, Plus, X } from "lucide-react";
+import { ArrowRight, Check, Lock, Plus, X } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PageContainer, PageHeader, StageFooter } from "@/components/PageHeader";
+import { CodeMenu, GUIDE_REFS, GuideRef } from "@/components/guide";
 import { useReview, type ReviewConfig } from "@/state/ReviewContext";
-import { SCHEMA_DESCRIPTIONS, SCHEMA_LABELS, type SchemaKey } from "@/data/mockData";
+import { SCHEMA_DESCRIPTIONS, SCHEMA_LABELS, type IneligibilityCode, type SchemaKey } from "@/data/mockData";
 import type { EffectMeasure } from "@/lib/meta";
 import { cn } from "@/lib/utils";
 
-const PICO: { key: keyof ReviewConfig; letter: string; label: string; placeholder: string }[] = [
+const PICO: { key: keyof ReviewConfig; letter: string; label: string; placeholder: string; helper?: string }[] = [
   { key: "population", letter: "P", label: "Population", placeholder: "Who are the patients?" },
   { key: "intervention", letter: "I", label: "Intervention", placeholder: "Health technology being assessed" },
   { key: "comparator", letter: "C", label: "Comparator", placeholder: "Current standard of care, placebo…" },
   { key: "outcome", letter: "O", label: "Outcomes", placeholder: "Critical and important outcomes" },
-  { key: "studyDesign", letter: "S", label: "Study design", placeholder: "e.g. Randomised controlled trials" },
+  {
+    key: "studyDesign",
+    letter: "S",
+    label: "Study design",
+    placeholder: "e.g. Randomised controlled trials",
+    helper: "Eligible: randomised controlled trials.",
+  },
 ];
+
+/** Criteria the Guide asks to justify: language restrictions and excluding grey literature. */
+const needsJustification = (item: string) => /language|conference abstract/i.test(item);
 
 const MEASURES: { value: EffectMeasure; label: string; desc: string }[] = [
   { value: "RR", label: "Risk ratio", desc: "Dichotomous outcomes" },
@@ -35,7 +45,7 @@ export default function Configuration() {
       <PageHeader
         step="Stage 1 of 6"
         title="Review configuration"
-        description="Define the review question using PICOS, set eligibility criteria, and choose which guideline-aligned field sets the extraction module should populate."
+        description="Define the review question (PICO plus study design), set eligibility criteria, and choose which guideline-aligned field sets the extraction module should populate."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 min-w-0">
@@ -43,7 +53,9 @@ export default function Configuration() {
           <Card>
             <CardHeader>
               <CardTitle>Review question</CardTitle>
-              <CardDescription>Structured using PICOS, as required by the Philippine HTA Methods Guide.</CardDescription>
+              <CardDescription>
+                Structured as PICO for inclusion criteria (Annex 6), with study design as an additional criterion.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
@@ -65,6 +77,7 @@ export default function Configuration() {
                       value={config[p.key] as string}
                       onChange={(e) => updateConfig({ [p.key]: e.target.value } as Partial<ReviewConfig>)}
                     />
+                    {p.helper && <p className="text-[11.5px] text-ink-muted">{p.helper}</p>}
                   </div>
                 </div>
               ))}
@@ -75,22 +88,36 @@ export default function Configuration() {
             <CardHeader>
               <CardTitle>Eligibility criteria</CardTitle>
               <CardDescription>
-                Criteria are embedded alongside PICOS to rank candidate studies during screening.
+                Criteria are embedded alongside the PICO question to rank candidate studies during screening.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <CriteriaBuilder
-                label="Inclusion"
-                tone="include"
-                items={config.inclusion}
-                onChange={(inclusion) => updateConfig({ inclusion })}
-              />
-              <CriteriaBuilder
-                label="Exclusion"
-                tone="exclude"
-                items={config.exclusion}
-                onChange={(exclusion) => updateConfig({ exclusion })}
-              />
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <CriteriaBuilder
+                  label="Inclusion"
+                  tone="include"
+                  items={config.inclusion}
+                  onChange={(inclusion) => updateConfig({ inclusion })}
+                  justifications={config.justifications}
+                  onJustify={(item, text) => updateConfig({ justifications: { ...config.justifications, [item]: text } })}
+                />
+                <CriteriaBuilder
+                  label="Exclusion"
+                  tone="exclude"
+                  items={config.exclusion}
+                  onChange={(exclusion) => updateConfig({ exclusion })}
+                  codes={config.exclusionCodes}
+                  onCodeChange={(item, code) => updateConfig({ exclusionCodes: { ...config.exclusionCodes, [item]: code } })}
+                  justifications={config.justifications}
+                  onJustify={(item, text) => updateConfig({ justifications: { ...config.justifications, [item]: text } })}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line pt-3">
+                <p className="text-[12px] text-ink-muted">
+                  Each exclusion criterion carries an ineligibility code used in screening and the PRISMA flow.
+                </p>
+                <GuideRef>{GUIDE_REFS.codes}</GuideRef>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -103,14 +130,18 @@ export default function Configuration() {
             </CardHeader>
             <CardContent className="space-y-2.5">
               {(Object.keys(SCHEMA_LABELS) as SchemaKey[]).map((key) => {
-                const on = config.schemas[key];
+                const locked = key === "annex8";
+                const on = locked || config.schemas[key];
                 return (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => updateConfig({ schemas: { ...config.schemas, [key]: !on } })}
+                    aria-disabled={locked}
+                    title={locked ? "Annex 8 is the required output and cannot be turned off" : undefined}
+                    onClick={() => !locked && updateConfig({ schemas: { ...config.schemas, [key]: !on } })}
                     className={cn(
-                      "flex w-full cursor-pointer items-start gap-3 rounded-lg border p-3.5 text-left transition-all",
+                      "flex w-full items-start gap-3 rounded-lg border p-3.5 text-left transition-all",
+                      locked ? "cursor-default" : "cursor-pointer",
                       on ? "border-brand-300 bg-brand-50/60" : "border-line bg-white hover:bg-cream",
                     )}
                   >
@@ -118,13 +149,15 @@ export default function Configuration() {
                       className={cn(
                         "mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border transition-colors",
                         on ? "border-brand-600 bg-brand-600 text-white" : "border-line bg-white",
+                        locked && "opacity-70",
                       )}
                     >
-                      {on && <Check className="size-3.5" strokeWidth={3} />}
+                      {on && (locked ? <Lock className="size-3" strokeWidth={2.5} /> : <Check className="size-3.5" strokeWidth={3} />)}
                     </span>
                     <span className="flex-1">
-                      <span className="flex items-center justify-between">
+                      <span className="flex items-center justify-between gap-2">
                         <span className="text-[14px] font-semibold text-ink">{SCHEMA_LABELS[key]}</span>
+                        {locked && <Badge variant="solid">Required output</Badge>}
                       </span>
                       <span className="mt-1 block text-[12.5px] leading-relaxed text-ink-muted">
                         {SCHEMA_DESCRIPTIONS[key]}
@@ -200,17 +233,38 @@ function CriteriaBuilder({
   tone,
   items,
   onChange,
+  codes,
+  onCodeChange,
+  justifications,
+  onJustify,
 }: {
   label: string;
   tone: "include" | "exclude";
   items: string[];
   onChange: (items: string[]) => void;
+  codes?: Record<string, IneligibilityCode>;
+  onCodeChange?: (item: string, code: IneligibilityCode) => void;
+  justifications: Record<string, string>;
+  onJustify: (item: string, text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [justifying, setJustifying] = useState<string | null>(null);
+  const [justDraft, setJustDraft] = useState("");
   const add = () => {
     const v = draft.trim();
-    if (v && !items.includes(v)) onChange([...items, v]);
+    if (v && !items.includes(v)) {
+      onChange([...items, v]);
+      if (onCodeChange && !codes?.[v]) onCodeChange(v, "Other");
+    }
     setDraft("");
+  };
+  const openJustify = (item: string) => {
+    setJustDraft(justifications[item] ?? "");
+    setJustifying(item);
+  };
+  const saveJustify = () => {
+    if (justifying) onJustify(justifying, justDraft.trim());
+    setJustifying(null);
   };
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -227,28 +281,75 @@ function CriteriaBuilder({
         <span className="text-[12px] text-ink-muted">({items.length})</span>
       </div>
       <div className="flex min-h-[112px] flex-wrap content-start gap-1.5 rounded-lg border border-dashed border-line bg-cream/50 p-2.5">
-        {items.map((it) => (
-          <span
-            key={it}
-            className={cn(
-              "group inline-flex animate-fade-in items-center gap-1 rounded-full border py-1 pr-1 pl-2.5 text-[12.5px]",
-              tone === "include"
-                ? "border-brand-200 bg-white text-brand-800"
-                : "border-coral/30 bg-white text-[#991b1b]",
-            )}
-          >
-            {it}
-            <button
-              type="button"
-              onClick={() => onChange(items.filter((i) => i !== it))}
-              className="grid size-4 cursor-pointer place-items-center rounded-full opacity-50 hover:bg-cream-dark hover:opacity-100"
-              aria-label={`Remove ${it}`}
+        {items.map((it) => {
+          const needs = needsJustification(it);
+          const justified = !!justifications[it];
+          return (
+            <span
+              key={it}
+              className={cn(
+                "group inline-flex animate-fade-in items-center gap-1 rounded-full border py-1 pr-1 pl-2.5 text-[12.5px]",
+                tone === "include"
+                  ? "border-brand-200 bg-white text-brand-800"
+                  : "border-coral/30 bg-white text-[#991b1b]",
+              )}
             >
-              <X className="size-3" />
-            </button>
-          </span>
-        ))}
+              {needs && !justified && (
+                <span className="size-1.5 shrink-0 rounded-full bg-flag" title="No justification recorded" />
+              )}
+              {it}
+              {codes && onCodeChange && (
+                <CodeMenu value={codes[it] ?? "Other"} onChange={(c) => onCodeChange(it, c)} label={it} />
+              )}
+              {needs && (
+                <button
+                  type="button"
+                  onClick={() => openJustify(it)}
+                  title={justified ? `Justification: ${justifications[it]}` : "Guide p. 16 · Search strategy"}
+                  className={cn(
+                    "ml-0.5 shrink-0 cursor-pointer whitespace-nowrap text-[11px] font-medium underline-offset-2 hover:underline",
+                    justified ? "text-brand-700" : "text-[#b45309]",
+                  )}
+                >
+                  {justified ? "Justified" : "Add justification"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onChange(items.filter((i) => i !== it))}
+                className="grid size-4 cursor-pointer place-items-center rounded-full opacity-50 hover:bg-cream-dark hover:opacity-100"
+                aria-label={`Remove ${it}`}
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          );
+        })}
       </div>
+      {justifying && (
+        <div className="mt-2 animate-fade-in rounded-lg border border-flag/35 bg-flag-soft/40 p-2">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="truncate text-[11.5px] font-medium text-[#854408]">Justification · {justifying}</span>
+            <GuideRef className="shrink-0">{GUIDE_REFS.search}</GuideRef>
+          </div>
+          <div className="flex gap-1.5">
+            <Input
+              autoFocus
+              value={justDraft}
+              onChange={(e) => setJustDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveJustify();
+                if (e.key === "Escape") setJustifying(null);
+              }}
+              placeholder="Why is this restriction justified for this review?"
+              className="h-8 bg-white text-[12.5px]"
+            />
+            <Button size="sm" onClick={saveJustify}>
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="mt-2 flex gap-1.5">
         <Input
           value={draft}

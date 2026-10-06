@@ -3,13 +3,36 @@
 
 export type StudyDesign =
   | "RCT"
+  | "Cohort"
+  | "Case-control"
   | "Systematic review"
-  | "Observational"
-  | "Economic evaluation"
-  | "Protocol"
-  | "Preclinical"
-  | "Qualitative"
-  | "Conference abstract";
+  | "Conference abstract"
+  | "Other";
+
+export const STUDY_DESIGNS: StudyDesign[] = [
+  "RCT",
+  "Cohort",
+  "Case-control",
+  "Systematic review",
+  "Conference abstract",
+  "Other",
+];
+
+/** Designs the RCT-only pipeline can carry forward (SRs are appraised only). */
+export function isSupportedDesign(d: StudyDesign) {
+  return d === "RCT" || d === "Systematic review";
+}
+
+export type IneligibilityCode = "P" | "I" | "C" | "O" | "S" | "Other";
+
+export const INELIGIBILITY_CODES: { code: IneligibilityCode; label: string }[] = [
+  { code: "P", label: "Population" },
+  { code: "I", label: "Intervention" },
+  { code: "C", label: "Comparator" },
+  { code: "O", label: "Outcome" },
+  { code: "S", label: "Study design (not RCT)" },
+  { code: "Other", label: "Other (e.g. publication type)" },
+];
 
 export type SearchSource = "PubMed" | "Cochrane CENTRAL" | "Embase" | "HERDIN";
 
@@ -67,9 +90,19 @@ export interface CandidateStudy {
   journal: string;
   source: SearchSource;
   design: StudyDesign;
+  /** Finer description when the Design chip is "Other" (e.g. "Economic evaluation"). */
+  designDetail?: string;
   abstract: string;
   relevance: number;
-  suggested: { decision: "include" | "exclude"; reason?: ExclusionReason };
+  suggested: {
+    decision: "include" | "exclude";
+    reason?: ExclusionReason;
+    code?: IneligibilityCode;
+    /** Short text required when the code is "Other". */
+    codeNote?: string;
+  };
+  /** Set when the record was removed as a duplicate before screening. */
+  duplicateOf?: string;
   trial?: TrialData;
 }
 
@@ -81,14 +114,14 @@ export type SchemaKey = "annex8" | "consort" | "prisma";
 
 export const SCHEMA_LABELS: Record<SchemaKey, string> = {
   annex8: "Annex 8",
-  consort: "CONSORT",
   prisma: "PRISMA",
+  consort: "CONSORT",
 };
 
 export const SCHEMA_DESCRIPTIONS: Record<SchemaKey, string> = {
-  annex8: "Philippine HTA Methods Guide — clinical evidence data extraction template",
-  consort: "CONSORT 2010 checklist items for reporting randomised trials",
-  prisma: "PRISMA 2020 data items and effect measures for evidence synthesis",
+  annex8: "Philippine HTA Methods Guide: sample data extraction table (Guide p. 75)",
+  prisma: "PRISMA 2020 flow reporting (required by the Guide, Table 4)",
+  consort: "CONSORT 2010 reporting items (reference standard used by this tool; not required by the Guide)",
 };
 
 export type FieldId =
@@ -490,228 +523,70 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
   {
     id: "s02",
     title:
-      "Effect of dapagliflozin on worsening heart failure events in a multicentre Southeast Asian population (SEA-HF)",
+      "Effect of dapagliflozin on NT-proBNP and health status in a multicentre Southeast Asian HFrEF population (SEA-HF)",
     authors: "Nguyen TT, Santos JL, Rahman AA, Chua MR, et al.",
     year: 2022,
     journal: "Asia-Pacific Journal of Heart Failure",
     source: "Cochrane CENTRAL",
     design: "RCT",
     abstract:
-      "We randomly assigned 1,220 Southeast Asian adults with HFrEF to dapagliflozin or placebo in addition to standard therapy. Dapagliflozin reduced the risk of the primary composite outcome (HR 0.75; 95% CI 0.58–0.97)…",
-    relevance: 0.94,
-    suggested: { decision: "include" },
-    trial: {
-      acronym: "SEA-HF",
-      registration: "NCT04388542",
-      designText: "Multicentre, double-blind, placebo-controlled RCT",
-      country: "Viet Nam, Philippines, Indonesia, Malaysia (22 sites)",
-      followUp: "12.0 months",
-      funding: "Regional cardiology society research grant",
-      population: hfrefPopulation,
-      lvef: "LVEF ≤ 40%",
-      meanAge: "61.3 (12.0)",
-      female: "29.7",
-      intervention: "Dapagliflozin 10 mg once daily + standard care",
-      comparator: "Matching placebo + standard care",
-      assessed: 1544,
-      nT: 612,
-      nC: 608,
-      lostT: 9,
-      lostC: 11,
-      primaryOutcome: "Composite of cardiovascular death or hospitalisation for heart failure",
-      eT: 98,
-      eC: 127,
-      hr: "0.75 (0.58–0.97)",
-      p: "0.031",
-      saeT: 141,
-      saeC: 163,
-      metrics: { precision: 0.91, recall: 0.89, f1: 0.9, kappa: 0.84 },
-      overrides: {
-        eC: { extracted: "121", confidence: "low" },
-        followUp: { confidence: "high" },
-      },
-    },
+      "We randomly assigned 1,220 Southeast Asian adults with HFrEF to dapagliflozin or placebo in addition to standard therapy. At 12 weeks, dapagliflozin lowered NT-proBNP and improved KCCQ scores; clinical events were not a pre-specified outcome…",
+    relevance: 0.82,
+    suggested: { decision: "exclude", reason: "Wrong outcome", code: "O" },
   },
   {
     id: "s03",
     title:
-      "Dapagliflozin versus placebo in chronic heart failure with reduced ejection fraction: the DECIDE-HF double-blind trial",
+      "Dapagliflozin after acute myocardial infarction in patients without prior heart failure: the DECIDE-MI double-blind trial",
     authors: "Müller A, Okafor C, Fernández L, Petrov I, et al.",
     year: 2020,
     journal: "International Journal of Cardiovascular Trials",
     source: "PubMed",
     design: "RCT",
     abstract:
-      "A total of 4,744 patients across 20 countries were randomised. The primary outcome occurred in 386 of 2,373 patients in the dapagliflozin group and 502 of 2,371 in the placebo group (HR 0.74; 95% CI 0.65–0.85)…",
-    relevance: 0.93,
-    suggested: { decision: "include" },
-    trial: {
-      acronym: "DECIDE-HF",
-      registration: "NCT03691558",
-      designText: "International, double-blind, placebo-controlled RCT",
-      country: "20 countries incl. Philippines (410 sites)",
-      followUp: "17.6 months",
-      funding: "Industry-sponsored",
-      population: hfrefPopulation,
-      lvef: "LVEF ≤ 40%",
-      meanAge: "66.2 (10.9)",
-      female: "23.4",
-      intervention: "Dapagliflozin 10 mg once daily + standard care",
-      comparator: "Matching placebo + standard care",
-      assessed: 8134,
-      nT: 2373,
-      nC: 2371,
-      lostT: 6,
-      lostC: 8,
-      primaryOutcome:
-        "Composite of worsening heart failure (hospitalisation or urgent visit) or cardiovascular death",
-      eT: 386,
-      eC: 502,
-      hr: "0.74 (0.65–0.85)",
-      p: "< 0.001",
-      saeT: 895,
-      saeC: 950,
-      metrics: { precision: 0.96, recall: 0.94, f1: 0.95, kappa: 0.91 },
-      overrides: {
-        nT: { extracted: "2378", confidence: "medium" },
-      },
-    },
+      "A total of 4,744 patients with acute myocardial infarction and no history of heart failure were randomised to dapagliflozin or placebo. The composite of cardiovascular death or HF hospitalisation did not differ significantly (HR 0.92; 95% CI 0.80–1.06)…",
+    relevance: 0.71,
+    suggested: { decision: "exclude", reason: "Wrong population", code: "P" },
   },
   {
     id: "s04",
-    title:
-      "Sodium–glucose cotransporter-2 inhibition and cardiovascular outcomes in HFrEF with and without diabetes (SOLACE)",
+    title: "Dapagliflozin and exercise capacity in heart failure with reduced ejection fraction: the SOLACE randomised trial",
     authors: "Kim J, Park SH, Lee HY, Ito T, et al.",
     year: 2021,
     journal: "East Asian Heart Journal",
     source: "Embase",
     design: "RCT",
     abstract:
-      "In 1,696 patients with HFrEF, dapagliflozin did not significantly reduce the primary composite outcome versus placebo (HR 0.96; 95% CI 0.78–1.19), with similar findings in patients with and without diabetes…",
-    relevance: 0.9,
-    suggested: { decision: "include" },
-    trial: {
-      acronym: "SOLACE",
-      registration: "NCT03877224",
-      designText: "Multicentre, double-blind, placebo-controlled RCT",
-      country: "Republic of Korea, Japan, Taiwan (64 sites)",
-      followUp: "15.3 months",
-      funding: "National research foundation grant",
-      population: hfrefPopulation + ", with or without type 2 diabetes",
-      lvef: "LVEF ≤ 40%",
-      meanAge: "63.9 (11.5)",
-      female: "26.8",
-      intervention: "Dapagliflozin 10 mg once daily + standard care",
-      comparator: "Matching placebo + standard care",
-      assessed: 2210,
-      nT: 845,
-      nC: 851,
-      lostT: 7,
-      lostC: 9,
-      primaryOutcome: "Composite of cardiovascular death or hospitalisation for heart failure",
-      eT: 160,
-      eC: 166,
-      hr: "0.96 (0.78–1.19)",
-      p: "0.71",
-      saeT: 288,
-      saeC: 301,
-      metrics: { precision: 0.9, recall: 0.88, f1: 0.89, kappa: 0.82 },
-      overrides: {
-        p: { extracted: "0.071", confidence: "low" },
-      },
-    },
+      "In 312 patients with HFrEF, dapagliflozin did not significantly improve 6-minute walk distance at 16 weeks versus placebo (mean difference 9.1 m; 95% CI −4.2 to 22.4). Cardiovascular events were collected only as safety data…",
+    relevance: 0.79,
+    suggested: { decision: "exclude", reason: "Wrong outcome", code: "O" },
   },
   {
     id: "s05",
     title:
-      "Early in-hospital initiation of dapagliflozin after acute decompensated heart failure: the EARLY-DAPA randomised trial",
+      "Early in-hospital initiation of dapagliflozin in acute heart failure across the ejection-fraction spectrum: the EARLY-DAPA randomised trial",
     authors: "Garcia R, Villanueva P, Dizon MC, Bautista JR, et al.",
     year: 2023,
     journal: "Acta Cardiologica Philippina",
     source: "HERDIN",
     design: "RCT",
     abstract:
-      "Across six Philippine tertiary hospitals, 527 patients stabilised after acute decompensated HFrEF were randomised before discharge. At 6 months, the primary outcome occurred in 16.6% vs 28.2% (HR 0.57; 95% CI 0.39–0.83)…",
-    relevance: 0.91,
-    suggested: { decision: "include" },
-    trial: {
-      acronym: "EARLY-DAPA",
-      registration: "PHRR230415-005112",
-      designText: "Multicentre, open-label, randomised controlled trial",
-      country: "Philippines (6 tertiary hospitals)",
-      followUp: "6 months",
-      funding: "DOH–PCHRD research grant",
-      population:
-        "Adults hospitalised for acute decompensated HFrEF, randomised in-hospital after haemodynamic stabilisation",
-      lvef: "LVEF ≤ 40%",
-      meanAge: "58.4 (13.1)",
-      female: "34.2",
-      intervention: "Dapagliflozin 10 mg once daily started before discharge + standard care",
-      comparator: "Standard care alone",
-      assessed: 811,
-      nT: 265,
-      nC: 262,
-      lostT: 11,
-      lostC: 13,
-      primaryOutcome: "Composite of cardiovascular death or heart failure readmission at 6 months",
-      eT: 44,
-      eC: 74,
-      hr: "0.57 (0.39–0.83)",
-      p: "0.003",
-      saeT: 61,
-      saeC: 72,
-      metrics: { precision: 0.88, recall: 0.86, f1: 0.87, kappa: 0.8 },
-      overrides: {
-        population: { confidence: "medium" },
-        female: { extracted: "43.2", confidence: "low" },
-        comparator: { confidence: "medium" },
-      },
-    },
+      "Across six Philippine tertiary hospitals, 527 patients hospitalised for acute heart failure, regardless of ejection fraction, were randomised before discharge. Results for the HFrEF subgroup were not reported separately…",
+    relevance: 0.84,
+    suggested: { decision: "exclude", reason: "Wrong population", code: "P" },
   },
   {
     id: "s06",
-    title:
-      "Dapagliflozin in older adults with heart failure and reduced ejection fraction: a pragmatic randomised trial (ELDER-HF)",
+    title: "Dapagliflozin versus empagliflozin in older adults with HFrEF: a pragmatic randomised trial (ELDER-HF)",
     authors: "Cruz AB, Lim CS, Ong WT, Mendoza FR, et al.",
     year: 2022,
     journal: "Journal of Geriatric Cardiology Asia",
     source: "PubMed",
     design: "RCT",
     abstract:
-      "We enrolled 800 patients aged ≥70 years with HFrEF. Dapagliflozin was well tolerated; the primary composite outcome occurred in 22.1% vs 25.4% of patients (HR 0.86; 95% CI 0.65–1.14)…",
-    relevance: 0.88,
-    suggested: { decision: "include" },
-    trial: {
-      acronym: "ELDER-HF",
-      registration: "NCT04502381",
-      designText: "Pragmatic, double-blind, placebo-controlled RCT",
-      country: "Philippines, Singapore (14 sites)",
-      followUp: "12.0 months",
-      funding: "Academic consortium; no industry funding",
-      population: "Adults ≥70 years with symptomatic chronic HFrEF (NYHA II–IV)",
-      lvef: "LVEF ≤ 40%",
-      meanAge: "76.9 (5.4)",
-      female: "38.5",
-      intervention: "Dapagliflozin 10 mg once daily + standard care",
-      comparator: "Matching placebo + standard care",
-      assessed: 1102,
-      nT: 402,
-      nC: 398,
-      lostT: 10,
-      lostC: 12,
-      primaryOutcome: "Composite of cardiovascular death or hospitalisation for heart failure",
-      eT: 89,
-      eC: 101,
-      hr: "0.86 (0.65–1.14)",
-      p: "0.29",
-      saeT: 132,
-      saeC: 139,
-      metrics: { precision: 0.92, recall: 0.9, f1: 0.91, kappa: 0.86 },
-      overrides: {
-        meanAge: { confidence: "medium" },
-        sae: { extracted: "132 / 193", confidence: "low" },
-      },
-    },
+      "We enrolled 800 patients aged ≥70 years with HFrEF and randomised them to dapagliflozin or empagliflozin. The composite of CV death or HF hospitalisation occurred in 22.1% vs 21.4% of patients (HR 1.04; 95% CI 0.79–1.37)…",
+    relevance: 0.76,
+    suggested: { decision: "exclude", reason: "Wrong comparator", code: "C" },
   },
   {
     id: "s07",
@@ -725,7 +600,7 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "Patients with LVEF > 40% were randomised to dapagliflozin or placebo. The primary composite outcome was reduced (HR 0.82)… Results support SGLT2 inhibition across the ejection-fraction spectrum.",
     relevance: 0.81,
-    suggested: { decision: "exclude", reason: "Wrong population" },
+    suggested: { decision: "exclude", reason: "Wrong population", code: "P" },
   },
   {
     id: "s08",
@@ -739,21 +614,21 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "This pragmatic trial compared two SGLT2 inhibitors in 640 HFrEF patients. No significant difference was observed in heart failure hospitalisation between agents…",
     relevance: 0.78,
-    suggested: { decision: "exclude", reason: "Wrong comparator" },
+    suggested: { decision: "exclude", reason: "Wrong comparator", code: "C" },
   },
   {
     id: "s09",
     title:
-      "SGLT2 inhibitors in heart failure: a systematic review and meta-analysis of randomised controlled trials",
+      "SGLT2 inhibitors in heart failure with reduced ejection fraction: a systematic review and meta-analysis of randomised controlled trials",
     authors: "Del Rosario JP, Chen W, Abubakar S, et al.",
     year: 2023,
     journal: "Systematic Reviews in Cardiology",
     source: "Cochrane CENTRAL",
     design: "Systematic review",
     abstract:
-      "We pooled 13 RCTs (n = 29,450). SGLT2 inhibitors reduced cardiovascular death or HF hospitalisation (RR 0.77; 95% CI 0.72–0.82) with low heterogeneity… Used for reference-list checking.",
-    relevance: 0.74,
-    suggested: { decision: "exclude", reason: "Wrong study design" },
+      "We searched four databases and pooled 13 RCTs (n = 29,450) of SGLT2 inhibitors in adults with HFrEF. SGLT2 inhibitors reduced cardiovascular death or HF hospitalisation (RR 0.77; 95% CI 0.72–0.82) with low heterogeneity; risk of bias was assessed with RoB 2…",
+    relevance: 0.86,
+    suggested: { decision: "include" },
   },
   {
     id: "s10",
@@ -763,11 +638,11 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     year: 2024,
     journal: "Philippine Journal of Cardiovascular Medicine",
     source: "HERDIN",
-    design: "Observational",
+    design: "Cohort",
     abstract:
       "Records of 1,012 patients with HFrEF were reviewed. Dapagliflozin users had lower 12-month readmission rates after propensity matching…",
     relevance: 0.69,
-    suggested: { decision: "exclude", reason: "Wrong study design" },
+    suggested: { decision: "exclude", reason: "Wrong study design", code: "S" },
   },
   {
     id: "s11",
@@ -777,11 +652,12 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     year: 2024,
     journal: "Value in Health Regional Issues (Asia)",
     source: "HERDIN",
-    design: "Economic evaluation",
+    design: "Other",
+    designDetail: "Economic evaluation",
     abstract:
       "Using a lifetime Markov model from the PhilHealth payer perspective, dapagliflozin yielded an ICER of PHP 312,000 per QALY gained… Referred to the economic evaluation workstream.",
     relevance: 0.66,
-    suggested: { decision: "exclude", reason: "Wrong outcome" },
+    suggested: { decision: "exclude", reason: "Wrong study design", code: "S" },
   },
   {
     id: "s12",
@@ -794,7 +670,12 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "Interim analysis of 214 patients showed improvement in KCCQ scores at 12 weeks. Full results pending peer review…",
     relevance: 0.63,
-    suggested: { decision: "exclude", reason: "Insufficient data (abstract only)" },
+    suggested: {
+      decision: "exclude",
+      reason: "Insufficient data (abstract only)",
+      code: "Other",
+      codeNote: "Publication type: conference abstract",
+    },
   },
   {
     id: "s13",
@@ -804,11 +685,12 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     year: 2021,
     journal: "Journal of Experimental Cardiology",
     source: "PubMed",
-    design: "Preclinical",
+    design: "Other",
+    designDetail: "Preclinical (animal)",
     abstract:
       "In transverse aortic constriction mice, dapagliflozin attenuated fibrosis and preserved systolic function via reduced myocardial sodium–hydrogen exchange…",
     relevance: 0.41,
-    suggested: { decision: "exclude", reason: "Non-human study" },
+    suggested: { decision: "exclude", reason: "Non-human study", code: "P" },
   },
   {
     id: "s14",
@@ -821,7 +703,7 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "A 24-week trial in 320 adults with inadequately controlled T2DM showed a placebo-adjusted HbA1c reduction of 0.6%… Patients with heart failure were excluded.",
     relevance: 0.52,
-    suggested: { decision: "exclude", reason: "Wrong population" },
+    suggested: { decision: "exclude", reason: "Wrong population", code: "P" },
   },
   {
     id: "s15",
@@ -830,11 +712,16 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     year: 2025,
     journal: "Trials in Asia",
     source: "PubMed",
-    design: "Protocol",
+    design: "RCT",
     abstract:
       "This protocol describes a planned pragmatic trial of 1,500 Filipino patients with HFrEF across 12 regions. Recruitment is ongoing; no outcome data are reported…",
     relevance: 0.58,
-    suggested: { decision: "exclude", reason: "Protocol / no results" },
+    suggested: {
+      decision: "exclude",
+      reason: "Protocol / no results",
+      code: "Other",
+      codeNote: "Publication type: trial protocol (no results)",
+    },
   },
   {
     id: "s16",
@@ -847,7 +734,7 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "Among 2,100 Asian patients with HFrEF, sacubitril–valsartan reduced CV death or HF hospitalisation compared with enalapril (HR 0.81)…",
     relevance: 0.55,
-    suggested: { decision: "exclude", reason: "Wrong intervention" },
+    suggested: { decision: "exclude", reason: "Wrong intervention", code: "I" },
   },
   {
     id: "s17",
@@ -860,7 +747,7 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "In 4,304 patients with CKD, dapagliflozin reduced the composite kidney outcome. A minority (11%) had heart failure at baseline; HF subgroup data are limited…",
     relevance: 0.61,
-    suggested: { decision: "exclude", reason: "Wrong population" },
+    suggested: { decision: "exclude", reason: "Wrong population", code: "P" },
   },
   {
     id: "s18",
@@ -873,7 +760,7 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "In 3,730 patients with HFrEF, empagliflozin reduced the composite of CV death or HF hospitalisation (HR 0.75) compared with placebo…",
     relevance: 0.72,
-    suggested: { decision: "exclude", reason: "Wrong intervention" },
+    suggested: { decision: "exclude", reason: "Wrong intervention", code: "I" },
   },
   {
     id: "s19",
@@ -888,48 +775,49 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
       "Duplicate of PubMed record (same DOI). In this multinational double-blind trial, 2,363 patients with HFrEF were randomised…",
     relevance: 0.95,
     suggested: { decision: "exclude", reason: "Duplicate record" },
+    duplicateOf: "s01",
   },
   {
     id: "s20",
     title:
-      "Patient perspectives on SGLT2 inhibitor adherence in Filipino heart failure clinics: a qualitative study",
+      "Genital mycotic infections among SGLT2 inhibitor users in Filipino heart failure clinics: a case-control study",
     authors: "Bernardo CL, Ramos GF, et al.",
     year: 2024,
     journal: "Philippine Journal of Nursing Research",
     source: "HERDIN",
-    design: "Qualitative",
+    design: "Case-control",
     abstract:
-      "Semi-structured interviews with 28 patients identified cost, pill burden, and genital infections as barriers to adherence…",
+      "Ninety-six patients with genital mycotic infection were matched to 288 controls from three heart failure clinics. Current SGLT2 inhibitor use was associated with higher odds of infection (OR 2.4); no cardiovascular outcomes were assessed…",
     relevance: 0.38,
-    suggested: { decision: "exclude", reason: "Wrong study design" },
+    suggested: { decision: "exclude", reason: "Wrong study design", code: "S" },
   },
 ];
 
 /** Screening recommendation bands derived from the relevance score. */
 export const RECOMMENDATION_THRESHOLDS = { include: 0.85, review: 0.6 };
 
-/** Pre-scripted "AI-generated" screening rationales, written to match each study's score band. */
+/** Pre-scripted system-suggested screening rationales, written to match each study's score band. */
 export const SCREENING_RATIONALES: Record<string, string> = {
-  s01: "Randomised, placebo-controlled trial in adults with HFrEF (LVEF ≤ 40%) comparing dapagliflozin 10 mg with placebo on top of standard care, reporting CV death or worsening HF — matches all PICOS elements.",
-  s19: "Matches all PICOS elements: an RCT of dapagliflozin vs placebo in adults with HFrEF reporting the composite CV outcome. Title and authors are identical to a PubMed record, so check for duplication before confirming.",
-  s02: "RCT in Southeast Asian adults with HFrEF comparing dapagliflozin with placebo plus standard therapy and reporting CV death or HF hospitalisation — a close PICOS match with high regional relevance.",
-  s03: "Large double-blind RCT of dapagliflozin vs placebo in chronic HFrEF with event counts for the primary composite outcome; population, intervention, comparator, outcome and design all align.",
-  s05: "Philippine multicentre RCT of dapagliflozin vs standard care in HFrEF after acute decompensation, reporting CV death or HF readmission. Open-label design noted, but all PICOS criteria are met.",
-  s04: "RCT of dapagliflozin vs placebo in HFrEF with and without diabetes, reporting CV death or HF hospitalisation — matches population, intervention, comparator and outcome.",
-  s06: "RCT of dapagliflozin vs placebo in adults ≥ 70 years with HFrEF reporting the composite CV outcome; an older cohort, but within the eligible population.",
+  s01: "Randomised, placebo-controlled trial in adults with HFrEF (LVEF ≤ 40%) comparing dapagliflozin 10 mg with placebo on top of standard care, reporting CV death or worsening HF — matches all PICO elements and the RCT design criterion.",
+  s19: "Matches all PICO elements: an RCT of dapagliflozin vs placebo in adults with HFrEF reporting the composite CV outcome. Title and authors are identical to a PubMed record, so check for duplication before confirming.",
+  s02: "RCT of dapagliflozin vs placebo in Southeast Asian adults with HFrEF, but it reports only NT-proBNP and KCCQ at 12 weeks; CV death or HF events are not reported, so the outcome criterion is not met.",
+  s03: "Double-blind RCT of dapagliflozin vs placebo reporting CV death or HF hospitalisation, but participants had acute myocardial infarction without prior heart failure; the population does not match HFrEF.",
+  s05: "Philippine multicentre RCT of dapagliflozin in acute heart failure, but enrolment was regardless of ejection fraction and no HFrEF subgroup is reported; the population criterion is not met.",
+  s04: "RCT of dapagliflozin vs placebo in HFrEF, but the primary outcome is 6-minute walk distance; CV events were collected only as safety data, so the outcome criterion is not met.",
+  s06: "RCT in adults ≥ 70 years with HFrEF, but dapagliflozin is compared with empagliflozin rather than placebo or standard care; head-to-head SGLT2 comparisons are listed under exclusion criteria.",
   s07: "Intervention, comparator and outcome match, but the population has LVEF > 40% (HFmrEF/HFpEF), outside the HFrEF criterion. Check whether an HFrEF subgroup is reported.",
   s08: "Population and intervention match, but the comparator is another SGLT2 inhibitor (empagliflozin) rather than placebo or standard care; head-to-head designs are listed under exclusion criteria.",
-  s09: "Topic matches the review question, but this is a systematic review and meta-analysis rather than a primary RCT. Useful for reference checking; confirm against the study-design criterion.",
+  s09: "Systematic review and meta-analysis of RCTs of SGLT2 inhibitors in HFrEF reporting CV death or HF hospitalisation; the PICO elements match. Tagged as a systematic review, so it is routed to AMSTAR 2 appraisal.",
   s18: "RCT design, HFrEF population and outcome match, but the intervention is empagliflozin, not dapagliflozin. Relevant only if the question is widened to the SGLT2-inhibitor class.",
   s10: "Relevant Philippine population and intervention, but a retrospective observational cohort does not meet the RCT study-design criterion.",
-  s11: "Addresses dapagliflozin in Philippine HFrEF patients, but reports cost-effectiveness (ICER per QALY) rather than clinical outcomes; better suited to the economic evaluation workstream.",
+  s11: "Addresses dapagliflozin in Philippine HFrEF patients, but this is a model-based economic evaluation (ICER per QALY), not a randomised trial; better suited to the economic evaluation workstream.",
   s12: "Relevant population and intervention, but a conference abstract with interim quality-of-life data only, giving insufficient outcome data for extraction.",
   s17: "Dapagliflozin RCT, but the population is chronic kidney disease with only a minority having heart failure; HFrEF-specific outcome data appear limited.",
-  s15: "Trial protocol with no results reported; does not meet the outcome requirement for reported CV death or HF events.",
-  s16: "HFrEF RCT, but it evaluates sacubitril–valsartan vs enalapril; neither the intervention nor the comparator matches the PICOS question.",
+  s15: "Trial protocol with no results reported; the publication type does not provide outcome data for CV death or HF events.",
+  s16: "HFrEF RCT, but it evaluates sacubitril–valsartan vs enalapril; neither the intervention nor the comparator matches the PICO question.",
   s14: "Dapagliflozin RCT in adults with type 2 diabetes that excluded heart failure and reports glycaemic outcomes; population and outcome do not match.",
-  s13: "Preclinical murine study; the non-human population and mechanistic outcomes fall outside the PICOS criteria.",
-  s20: "Qualitative interview study on adherence with no randomised comparison and no CV death or HF event outcomes; study design and outcomes do not match.",
+  s13: "Preclinical murine study; the non-human population and mechanistic outcomes fall outside the PICO criteria.",
+  s20: "Case-control study of infection risk among SGLT2 inhibitor users, with no randomised comparison and no CV death or HF event outcomes; the study design does not meet the RCT criterion.",
 };
 
 export const SEARCH_SUMMARY = {
@@ -977,23 +865,45 @@ export const ROB2_DOMAINS = [
 ] as const;
 
 export const AMSTAR2_ITEMS = [
-  { id: "a1", title: "PICO components in research questions and inclusion criteria", critical: false },
-  { id: "a2", title: "Protocol registered before commencement of the review", critical: true },
-  { id: "a3", title: "Explanation of study designs selected for inclusion", critical: false },
+  { id: "a1", title: "PICO components in the review question and inclusion criteria", critical: false },
+  { id: "a2", title: "Protocol established before the review", critical: true },
+  { id: "a3", title: "Study design selection explained", critical: false },
   { id: "a4", title: "Comprehensive literature search strategy", critical: true },
-  { id: "a5", title: "Study selection performed in duplicate", critical: false },
-  { id: "a6", title: "Data extraction performed in duplicate", critical: false },
+  { id: "a5", title: "Study selection done in duplicate", critical: false },
+  { id: "a6", title: "Data extraction done in duplicate", critical: false },
   { id: "a7", title: "List of excluded studies with justification", critical: true },
   { id: "a8", title: "Included studies described in adequate detail", critical: false },
-  { id: "a9", title: "Satisfactory technique for assessing risk of bias", critical: true },
-  { id: "a10", title: "Sources of funding for included studies reported", critical: false },
+  { id: "a9", title: "Satisfactory technique for risk of bias", critical: true },
+  { id: "a10", title: "Funding sources of included studies reported", critical: false },
   { id: "a11", title: "Appropriate methods for statistical combination", critical: true },
-  { id: "a12", title: "Impact of RoB on meta-analysis results assessed", critical: false },
-  { id: "a13", title: "RoB accounted for when interpreting results", critical: true },
-  { id: "a14", title: "Satisfactory explanation of heterogeneity", critical: false },
+  { id: "a12", title: "Impact of risk of bias on meta-analysis results assessed", critical: false },
+  { id: "a13", title: "Risk of bias accounted for when interpreting results", critical: true },
+  { id: "a14", title: "Heterogeneity explained or discussed", critical: false },
   { id: "a15", title: "Publication bias investigated", critical: true },
-  { id: "a16", title: "Conflicts of interest reported", critical: false },
+  { id: "a16", title: "Conflicts of interest and funding of the review reported", critical: false },
 ] as const;
+
+/** Sample AMSTAR 2 answers used only by the "load sample judgements" demo shortcut. */
+export const SAMPLE_AMSTAR2: Record<string, Record<string, { j: "yes" | "partial" | "no"; note: string }>> = {
+  s09: {
+    a1: { j: "yes", note: "PICO stated in the methods." },
+    a2: { j: "yes", note: "PROSPERO registration cited." },
+    a3: { j: "yes", note: "RCT-only inclusion explained." },
+    a4: { j: "partial", note: "Four databases; grey literature not searched." },
+    a5: { j: "yes", note: "Two reviewers screened independently." },
+    a6: { j: "yes", note: "Duplicate extraction reported." },
+    a7: { j: "partial", note: "Excluded full texts listed without reasons for all." },
+    a8: { j: "yes", note: "Characteristics table provided." },
+    a9: { j: "yes", note: "RoB 2 used for all trials." },
+    a10: { j: "no", note: "Funding of included trials not reported." },
+    a11: { j: "yes", note: "Random-effects model, justified." },
+    a12: { j: "yes", note: "Sensitivity analysis excluding high-risk trials." },
+    a13: { j: "yes", note: "RoB discussed in interpretation." },
+    a14: { j: "yes", note: "Low heterogeneity discussed." },
+    a15: { j: "yes", note: "Funnel plot and Egger's test." },
+    a16: { j: "no", note: "Review funding source not stated." },
+  },
+};
 
 /** Sample judgements used only by the "load sample appraisal" demo shortcut. */
 export const SAMPLE_ROB2: Record<string, Record<string, { j: "low" | "some" | "high"; note: string }>> = {
@@ -1067,6 +977,12 @@ export const DEFAULT_REVIEW_CONFIG = {
     "Conference abstracts without full data",
     "Non-human studies",
   ],
+  exclusionCodes: {
+    "HFpEF / HFmrEF populations": "P",
+    "Head-to-head SGLT2 inhibitor comparisons": "C",
+    "Conference abstracts without full data": "Other",
+    "Non-human studies": "P",
+  } as Record<string, IneligibilityCode>,
 };
 
 export const OTHER_REVIEWS = [

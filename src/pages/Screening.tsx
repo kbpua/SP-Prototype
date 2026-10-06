@@ -7,6 +7,7 @@ import {
   ChevronDown,
   CircleHelp,
   Database,
+  Info,
   Pencil,
   RotateCcw,
   Sparkles,
@@ -18,18 +19,30 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AboutAutomation } from "@/components/ui/tooltip";
-import { Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Progress } from "@/components/ui/progress";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { PageHeader } from "@/components/PageHeader";
-import { useReview, type Decision } from "@/state/ReviewContext";
+import { CodeBadge, CodeChips, GUIDE_REFS, GuideRef, codeLabel } from "@/components/guide";
 import {
-  CANDIDATE_STUDIES,
+  SCREENABLE_STUDIES,
+  suggestedExclusion,
+  useReview,
+  type Decision,
+  type PrismaCounts,
+  type ScreeningDecision,
+} from "@/state/ReviewContext";
+import {
+  INELIGIBILITY_CODES,
   RECOMMENDATION_THRESHOLDS,
   SCREENING_RATIONALES,
   SEARCH_SUMMARY,
+  STUDY_DESIGNS,
+  isSupportedDesign,
   type CandidateStudy,
+  type IneligibilityCode,
+  type StudyDesign,
 } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 
@@ -44,66 +57,62 @@ function recommendationFor(score: number): Recommendation {
 
 export default function Screening() {
   const navigate = useNavigate();
-  const { screening, setDecision, rationales, setRationale } = useReview();
+  const { screening, setDecision, rationales, setRationale, designOf, setDesign, applySuggestedDecisions, prisma } =
+    useReview();
   const [filter, setFilter] = useState<Filter>("all");
+  const [codeFilter, setCodeFilter] = useState<IneligibilityCode | null>(null);
 
   const rationaleText = (id: string) => rationales[id] ?? SCREENING_RATIONALES[id] ?? "";
 
-  const confirm = (id: string, d: Decision | null, reasonCategory?: string) => {
-    const study = CANDIDATE_STUDIES.find((c) => c.id === id);
-    const category = d === "exclude" ? (reasonCategory ?? study?.suggested.reason ?? "Reason not specified") : undefined;
-    setDecision(id, d ? { decision: d, reason: category } : null);
+  const decide = (id: string, d: Decision | null) => {
+    setDecision(id, d ? { decision: d } : null);
+  };
+
+  const confirmExclusion = (study: CandidateStudy, code: IneligibilityCode, note: string | undefined, edited: boolean) => {
+    setDecision(study.id, {
+      decision: "exclude",
+      reason: edited ? codeLabel(code) : (study.suggested.reason ?? codeLabel(code)),
+      code,
+      codeNote: code === "Other" ? note : undefined,
+      codeEdited: edited,
+    });
   };
 
   const editRationale = (id: string, text: string | null) => {
     setRationale(id, text === null || text === SCREENING_RATIONALES[id] ? null : text);
-    const current = screening[id];
-    if (current) {
-      setDecision(id, { ...current });
-    }
   };
 
-  const fillRemaining = () => {
-    for (const c of CANDIDATE_STUDIES) {
-      const existing = screening[c.id];
-      if (!existing || existing.decision === "maybe") confirm(c.id, c.suggested.decision);
-    }
+  const counts = {
+    include: prisma.included,
+    exclude: prisma.excluded,
+    maybe: prisma.maybe,
+    undecided: prisma.undecided,
   };
 
-  const counts = useMemo(() => {
-    const c = { include: 0, exclude: 0, maybe: 0, undecided: 0 };
-    for (const s of CANDIDATE_STUDIES) {
-      const d = screening[s.id]?.decision;
-      if (d) c[d]++;
-      else c.undecided++;
-    }
-    return c;
-  }, [screening]);
-
-  const reasons = useMemo(() => {
-    const r: Record<string, number> = {};
-    for (const s of CANDIDATE_STUDIES) {
-      const d = screening[s.id];
-      if (d?.decision === "exclude") {
-        const k = (d.reason && d.reason.length < 50 ? d.reason : s.suggested.reason) ?? "Reason not specified";
-        r[k] = (r[k] ?? 0) + 1;
-      }
-    }
-    return Object.entries(r).sort((a, b) => b[1] - a[1]);
-  }, [screening]);
-
-  const list = CANDIDATE_STUDIES.slice()
+  const list = SCREENABLE_STUDIES.slice()
     .sort((a, b) => b.relevance - a.relevance)
     .filter((s) => {
-      const d = screening[s.id]?.decision;
+      const d = screening[s.id];
       if (filter === "all") return true;
       if (filter === "undecided") return !d;
-      return d === filter;
+      if (filter === "exclude" && codeFilter) return d?.decision === "exclude" && (d.code ?? "Other") === codeFilter;
+      return d?.decision === filter;
     });
 
-  const total = CANDIDATE_STUDIES.length;
-  const duplicatesRemoved = 1;
-  const screened = counts.include + counts.exclude;
+  const total = prisma.screened;
+
+  const changeFilter = (f: Filter) => {
+    setFilter(f);
+    if (f !== "exclude") setCodeFilter(null);
+  };
+  const filterByCode = (code: IneligibilityCode) => {
+    if (filter === "exclude" && codeFilter === code) {
+      setCodeFilter(null);
+    } else {
+      setFilter("exclude");
+      setCodeFilter(code);
+    }
+  };
 
   // Gate: Undecided must be 0 AND at least one study Included
   const canProceed = counts.undecided === 0 && counts.include > 0;
@@ -145,11 +154,21 @@ export default function Screening() {
                 <Badge variant="default" className="whitespace-nowrap">
                   <Sparkles /> Ranked by system · analyst decides
                 </Badge>
-                <AboutAutomation text="Records are ranked by embedding similarity to the PICOS question. The system suggests a decision and rationale; the analyst makes and logs every decision." />
+                <AboutAutomation text="Records are ranked by embedding similarity to the PICO question. The system suggests a decision, an ineligibility code, and a rationale; the analyst makes and logs every decision." />
               </div>
             }
-            description="Candidate records are ranked by embedding similarity to the PICOS question and eligibility criteria. Every include or exclude decision is made by the analyst and logged for the PRISMA flow diagram."
+            description="Candidate records are ranked by embedding similarity to the PICO question and eligibility criteria. Every include or exclude decision is made by the analyst and logged for the PRISMA flow diagram."
           />
+
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-1.5 text-[12px] text-sky-900">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Info className="size-3.5 shrink-0 text-sky-700" />
+              <span className="truncate">
+                Scope: randomised trials for therapeutic-effect questions (Guide Table 2). Other designs are logged as code S.
+              </span>
+            </span>
+            <GuideRef className="hidden shrink-0 xl:inline-flex">{GUIDE_REFS.design}</GuideRef>
+          </div>
 
           <Card className="mb-3 px-4 py-2.5 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-1">
@@ -163,7 +182,7 @@ export default function Screening() {
             </div>
             <div className="truncate font-mono text-[11.5px] text-ink-soft">{SEARCH_SUMMARY.query}</div>
             <div className="mt-1 truncate text-[11px] text-ink-muted">
-              Imported from analyst's search · 20 records via RIS/CSV ·{" "}
+              Imported from analyst's search · {prisma.identified} records via RIS/CSV ·{" "}
               {SEARCH_SUMMARY.databases.map((d) => `${d.name} (${d.records})`).join(" · ")}
             </div>
           </Card>
@@ -173,7 +192,7 @@ export default function Screening() {
               <Segmented<Filter>
                 size="sm"
                 value={filter}
-                onChange={setFilter}
+                onChange={changeFilter}
                 options={[
                   { value: "all", label: `All ${total}` },
                   { value: "undecided", label: `Undecided ${counts.undecided}` },
@@ -183,7 +202,18 @@ export default function Screening() {
                 ]}
               />
             </div>
-            <span className="text-[11.5px] text-ink-muted whitespace-nowrap">Sorted by relevance score</span>
+            {codeFilter ? (
+              <button
+                type="button"
+                onClick={() => setCodeFilter(null)}
+                className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-coral/30 bg-white px-2 py-0.5 text-[11.5px] text-ink-soft hover:border-coral"
+              >
+                Code <CodeBadge code={codeFilter} /> {codeLabel(codeFilter)}
+                <X className="size-3" />
+              </button>
+            ) : (
+              <span className="text-[11.5px] text-ink-muted whitespace-nowrap">Sorted by relevance score</span>
+            )}
           </div>
 
           <div className="space-y-2.5 pb-8 lg:pb-2">
@@ -191,10 +221,13 @@ export default function Screening() {
               <StudyRow
                 key={s.id}
                 study={s}
-                decision={screening[s.id]?.decision}
+                decision={screening[s.id]}
+                design={designOf(s)}
+                onDesign={(d) => setDesign(s.id, d)}
                 rationale={rationaleText(s.id)}
                 edited={s.id in rationales}
-                onDecide={(d) => confirm(s.id, d)}
+                onDecide={(d) => decide(s.id, d)}
+                onConfirmExclusion={(code, note, edited) => confirmExclusion(s, code, note, edited)}
                 onEditRationale={(text) => editRationale(s.id, text)}
               />
             ))}
@@ -208,15 +241,7 @@ export default function Screening() {
 
         <div className="col-span-1 lg:col-span-4 min-w-0 lg:min-h-0">
           <div className="flex flex-col gap-3 lg:h-full lg:min-h-0">
-            <PrismaPanel
-              total={total}
-              screened={screened}
-              included={counts.include}
-              excluded={counts.exclude}
-              maybe={counts.maybe}
-              duplicatesRemoved={duplicatesRemoved}
-              reasons={reasons}
-            />
+            <PrismaPanel prisma={prisma} activeCode={codeFilter} onCode={filterByCode} />
 
             {/* Dynamic CTA Block below PRISMA flow */}
             <div className="shrink-0 space-y-2 rounded-xl border border-line bg-white p-3 shadow-2xs">
@@ -243,7 +268,7 @@ export default function Screening() {
 
               <button
                 type="button"
-                onClick={fillRemaining}
+                onClick={applySuggestedDecisions}
                 title="Demo shortcut: fill remaining with reference decisions"
                 className="flex w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-dashed border-line px-2 py-1.5 text-[11.5px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700 bg-cream/40"
               >
@@ -272,23 +297,39 @@ const REC_STYLE: Record<Recommendation, { label: string; cls: string }> = {
 
 function StudyRow({
   study,
-  decision,
+  decision: logged,
+  design,
+  onDesign,
   rationale,
   edited,
   onDecide,
+  onConfirmExclusion,
   onEditRationale,
 }: {
   study: CandidateStudy;
-  decision?: Decision;
+  decision?: ScreeningDecision;
+  design: StudyDesign;
+  onDesign: (d: StudyDesign) => void;
   rationale: string;
   edited: boolean;
   onDecide: (d: Decision | null) => void;
+  onConfirmExclusion: (code: IneligibilityCode, note: string | undefined, edited: boolean) => void;
   onEditRationale: (text: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [excluding, setExcluding] = useState(false);
+  const decision = logged?.decision;
   const tone = relevanceTone(study.relevance);
   const rec = recommendationFor(study.relevance);
   const disagrees = (rec === "include" && decision === "exclude") || (rec === "exclude" && decision === "include");
+  const suggestion = suggestedExclusion(study, design);
+  const unsupported = !isSupportedDesign(design);
+
+  const onExcludeClick = () => {
+    if (excluding) setExcluding(false);
+    else if (decision === "exclude") onDecide(null);
+    else setExcluding(true);
+  };
 
   return (
     <Card
@@ -336,8 +377,23 @@ function StudyRow({
           </div>
           <p className={cn("mt-2 text-[13px] leading-relaxed text-ink-soft", !open && "line-clamp-2")}>{study.abstract}</p>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            <Badge variant={study.design === "RCT" ? "default" : "neutral"}>{study.design}</Badge>
+            <DesignChip study={study} value={design} onChange={onDesign} />
             <Badge variant="outline">{study.source}</Badge>
+            {decision === "exclude" && logged?.code && (
+              <span className="flex items-center gap-1 text-[11.5px] text-ink-muted">
+                <CodeBadge code={logged.code} />
+                <span className="max-w-[260px] truncate">
+                  {logged.code === "Other" && logged.codeNote ? logged.codeNote : codeLabel(logged.code)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setExcluding(true)}
+                  className="cursor-pointer text-[11.5px] font-medium text-brand-700 hover:underline"
+                >
+                  Edit code
+                </button>
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setOpen((o) => !o)}
@@ -347,6 +403,46 @@ function StudyRow({
               <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
             </button>
           </div>
+
+          {(unsupported || design === "Systematic review") && (
+            <div
+              title={GUIDE_REFS.design}
+              className={cn(
+                "mt-2 flex items-start gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] leading-snug",
+                unsupported
+                  ? "border-flag/35 bg-flag-soft/60 text-[#854408]"
+                  : "border-sky-200 bg-sky-50/80 text-sky-900",
+              )}
+            >
+              {unsupported ? (
+                <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              ) : (
+                <Info className="mt-px size-3.5 shrink-0 text-sky-700" />
+              )}
+              <span>
+                {unsupported
+                  ? suggestion.code === "S" || !suggestion.code
+                    ? "Design not supported in this prototype (RCT-only). Logged as ineligibility code S."
+                    : `Design not supported in this prototype (RCT-only). Logged as ineligibility code ${suggestion.code} (${(
+                        suggestion.note ?? codeLabel(suggestion.code)
+                      ).replace(/^Publication type: /, "publication type: ")}).`
+                  : "Included systematic reviews are appraised with AMSTAR 2 and are not extracted or pooled."}
+              </span>
+            </div>
+          )}
+
+          {excluding && (
+            <ExclusionPanel
+              key={`${design}-${logged?.code ?? ""}`}
+              suggestion={suggestion}
+              current={decision === "exclude" ? logged : undefined}
+              onCancel={() => setExcluding(false)}
+              onConfirm={(code, note, wasEdited) => {
+                onConfirmExclusion(code, note, wasEdited);
+                setExcluding(false);
+              }}
+            />
+          )}
 
           <RationaleBox
             text={rationale}
@@ -369,21 +465,28 @@ function StudyRow({
           <DecisionButton
             active={decision === "include"}
             tone="include"
-            onClick={() => onDecide(decision === "include" ? null : "include")}
+            onClick={() => {
+              setExcluding(false);
+              onDecide(decision === "include" ? null : "include");
+            }}
           >
             <Check /> Include
           </DecisionButton>
           <DecisionButton
             active={decision === "maybe"}
             tone="maybe"
-            onClick={() => onDecide(decision === "maybe" ? null : "maybe")}
+            onClick={() => {
+              setExcluding(false);
+              onDecide(decision === "maybe" ? null : "maybe");
+            }}
           >
             <CircleHelp /> Maybe
           </DecisionButton>
           <DecisionButton
             active={decision === "exclude"}
+            pending={excluding && decision !== "exclude"}
             tone="exclude"
-            onClick={() => onDecide(decision === "exclude" ? null : "exclude")}
+            onClick={onExcludeClick}
           >
             <X /> Exclude
           </DecisionButton>
@@ -498,13 +601,118 @@ function RationaleBox({
   );
 }
 
+function DesignChip({
+  study,
+  value,
+  onChange,
+}: {
+  study: CandidateStudy;
+  value: StudyDesign;
+  onChange: (d: StudyDesign) => void;
+}) {
+  const changed = value !== study.design;
+  return (
+    <label
+      title={`${GUIDE_REFS.design}${study.designDetail ? ` · imported as ${study.designDetail}` : ""}${changed ? ` · imported as ${study.design}` : ""}`}
+      className={cn(
+        "relative inline-flex cursor-pointer items-center gap-1 rounded-full border py-0.5 pr-1.5 pl-2 text-[11.5px] font-medium leading-4",
+        value === "RCT"
+          ? "border-brand-200 bg-brand-50 text-brand-800"
+          : value === "Systematic review"
+            ? "border-sky-200 bg-sky-50 text-sky-800"
+            : "border-flag/35 bg-flag-soft text-[#854408]",
+      )}
+    >
+      <span className="text-[10.5px] font-normal opacity-70">Design</span>
+      <span>{value === "Other" && study.designDetail && !changed ? `Other · ${study.designDetail}` : value}</span>
+      {changed && <UserRound className="size-3" />}
+      <ChevronDown className="size-3 opacity-60" />
+      <select
+        aria-label="Study design"
+        value={value}
+        onChange={(e) => onChange(e.target.value as StudyDesign)}
+        className="absolute inset-0 cursor-pointer opacity-0"
+      >
+        {STUDY_DESIGNS.map((d) => (
+          <option key={d} value={d}>
+            {d}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ExclusionPanel({
+  suggestion,
+  current,
+  onCancel,
+  onConfirm,
+}: {
+  suggestion: { code?: IneligibilityCode; note?: string };
+  current?: ScreeningDecision;
+  onCancel: () => void;
+  onConfirm: (code: IneligibilityCode, note: string | undefined, edited: boolean) => void;
+}) {
+  const [code, setCode] = useState<IneligibilityCode | undefined>(current?.code ?? suggestion.code);
+  const [note, setNote] = useState(current?.codeNote ?? suggestion.note ?? "");
+  const edited = code !== undefined && (code !== suggestion.code || (code === "Other" && note !== (suggestion.note ?? "")));
+  const valid = !!code && (code !== "Other" || note.trim().length > 0);
+
+  return (
+    <div className="mt-3 animate-fade-in rounded-lg border border-coral/30 bg-coral-soft/30 px-3.5 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11.5px] font-semibold text-ink-soft">Ineligibility code</span>
+        <CodeChips value={code} onChange={setCode} />
+        {code &&
+          (edited ? (
+            <Badge variant="amber">
+              <UserRound /> Analyst-edited
+            </Badge>
+          ) : (
+            <Badge variant="default">
+              <Sparkles /> System-suggested
+            </Badge>
+          ))}
+        <GuideRef className="ml-auto">{GUIDE_REFS.codes}</GuideRef>
+      </div>
+      <div className="mt-1.5 text-[11.5px] text-ink-muted">
+        {code ? codeLabel(code) : "No matching exclusion criterion. Select the code that applies."}
+      </div>
+      {code === "Other" && (
+        <Input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Short reason, e.g. publication type"
+          className="mt-2 h-8 bg-white text-[12.5px]"
+        />
+      )}
+      <div className="mt-2 flex items-center justify-end gap-1.5">
+        <Button size="xs" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          size="xs"
+          disabled={!valid}
+          onClick={() => code && onConfirm(code, code === "Other" ? note.trim() : undefined, edited)}
+          className="bg-coral hover:bg-coral/90"
+        >
+          <X /> Confirm exclusion
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function DecisionButton({
   active,
+  pending,
   tone,
   onClick,
   children,
 }: {
   active: boolean;
+  pending?: boolean;
   tone: "include" | "maybe" | "exclude";
   onClick: () => void;
   children: React.ReactNode;
@@ -525,7 +733,11 @@ function DecisionButton({
       onClick={onClick}
       className={cn(
         "flex h-7 w-[92px] shrink-0 whitespace-nowrap cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-all active:scale-95 [&_svg]:size-3.5",
-        active ? activeCls : cn("border-line bg-white text-ink-soft", idleCls),
+        active
+          ? activeCls
+          : pending
+            ? "border-dashed border-coral bg-coral-soft/50 text-[#991b1b]"
+            : cn("border-line bg-white text-ink-soft", idleCls),
       )}
     >
       {children}
@@ -534,22 +746,16 @@ function DecisionButton({
 }
 
 function PrismaPanel({
-  total,
-  screened,
-  included,
-  excluded,
-  maybe,
-  duplicatesRemoved,
-  reasons,
+  prisma,
+  activeCode,
+  onCode,
 }: {
-  total: number;
-  screened: number;
-  included: number;
-  excluded: number;
-  maybe: number;
-  duplicatesRemoved: number;
-  reasons: [string, number][];
+  prisma: PrismaCounts;
+  activeCode: IneligibilityCode | null;
+  onCode: (c: IneligibilityCode) => void;
 }) {
+  const { identified, duplicates, screened, excluded, included, maybe, undecided } = prisma;
+  const decided = included + excluded;
   return (
     <Card className="flex min-h-0 flex-col overflow-hidden shadow-xs">
       <div className="flex shrink-0 items-center justify-between border-b border-line bg-cream/60 px-4 py-2.5">
@@ -565,8 +771,8 @@ function PrismaPanel({
 
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3 scrollbar-thin">
         <div className="overflow-hidden rounded-lg border border-line bg-white shadow-2xs divide-y divide-line">
-          <FlowRow label="Records identified" value={total} />
-          <FlowRow label="Duplicates removed" value={duplicatesRemoved} />
+          <FlowRow label="Records identified" value={identified} />
+          <FlowRow label="Duplicates removed" value={duplicates} />
         </div>
 
         <div className="rounded-lg border border-line bg-white shadow-2xs">
@@ -575,20 +781,35 @@ function PrismaPanel({
 
         <div className="rounded-lg border border-coral/30 bg-coral-soft/50 shadow-2xs">
           <FlowRow label="Records excluded" value={excluded} className="font-semibold text-[#991b1b]" valueClassName="font-bold" />
-          {excluded > 0 && reasons.length > 0 && (
-            <div className="-mt-1 flex flex-wrap gap-1 px-3 pb-2">
-              {reasons.map(([r, n]) => (
-                <span
-                  key={r}
-                  title={r}
-                  className="inline-flex max-w-full items-center gap-1 rounded border border-coral/25 bg-white/80 px-1.5 text-[10.5px] leading-[18px] text-ink-soft"
-                >
-                  <span className="truncate">{r}</span>
-                  <span className="shrink-0 font-semibold tabular text-[#991b1b]">{n}</span>
-                </span>
-              ))}
+          <div className="-mt-1 px-3 pb-2">
+            <div className="flex flex-wrap gap-1">
+              {INELIGIBILITY_CODES.map(({ code, label }) => {
+                const n = prisma.byCode[code];
+                const on = activeCode === code;
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    disabled={n === 0}
+                    onClick={() => onCode(code)}
+                    title={`${label}: ${n} excluded · click to filter the list`}
+                    className={cn(
+                      "inline-flex cursor-pointer items-center gap-1 rounded border px-1.5 font-mono text-[10.5px] leading-[18px] transition-colors disabled:cursor-default disabled:opacity-45",
+                      on
+                        ? "border-coral bg-coral text-white"
+                        : "border-coral/25 bg-white/80 text-ink-soft hover:border-coral/60",
+                    )}
+                  >
+                    <span className="font-semibold">{code}</span>
+                    <span className={cn("tabular font-sans font-semibold", on ? "text-white" : "text-[#991b1b]")}>{n}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
+            <GuideRef className="mt-1" title={GUIDE_REFS.prisma}>
+              Reasons per PRISMA flow · Guide p. 21
+            </GuideRef>
+          </div>
         </div>
 
         <div className="rounded-lg border-2 border-brand-500 bg-brand-50/90 shadow-xs">
@@ -612,10 +833,16 @@ function PrismaPanel({
         <div className="mb-1 flex justify-between text-[11.5px] text-ink-muted">
           <span>Screening progress</span>
           <span className="tabular font-semibold text-ink-soft">
-            {screened}/{total} ({Math.round((screened / total) * 100)}%)
+            {decided}/{screened} ({Math.round((decided / screened) * 100)}%)
           </span>
         </div>
-        <Progress value={(screened / total) * 100} className="h-1.5" />
+        <Progress value={(decided / screened) * 100} className="h-1.5" />
+        <div
+          className="mt-1 truncate text-[10.5px] tabular text-ink-muted"
+          title="Excluded + Included + Maybe + Undecided = Screened"
+        >
+          {excluded} excl. + {included} incl. + {maybe} maybe + {undecided} undecided = {screened} screened
+        </div>
       </div>
     </Card>
   );

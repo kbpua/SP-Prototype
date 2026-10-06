@@ -6,6 +6,7 @@ import {
   Check,
   CheckCheck,
   FileText,
+  Info,
   Keyboard,
   Loader2,
   Pencil,
@@ -41,6 +42,7 @@ import {
   type FieldId,
   type SchemaKey,
 } from "@/data/mockData";
+import { reviewsOnlyNote } from "@/lib/review";
 import { cn } from "@/lib/utils";
 
 const processedDocs = new Set<string>();
@@ -63,7 +65,7 @@ function confidenceScore(id: string, c: Confidence) {
 
 export default function Extraction() {
   const navigate = useNavigate();
-  const { extractable, included, verification, setField, acceptHighConfidence, config } = useReview();
+  const { extractable, included, reviewsOnly, verification, setField, acceptHighConfidence, config } = useReview();
   const [docId, setDocId] = useState<string | undefined>(extractable[0]?.id);
   const [active, setActive] = useState<FieldId | undefined>();
   const [hovered, setHovered] = useState<FieldId | undefined>();
@@ -120,6 +122,7 @@ export default function Extraction() {
   };
 
   const resolved = fields.filter((f) => statusOf(f.def.id) !== "pending").length;
+  const batchAccepted = fields.filter((f) => docVerification[f.def.id]?.batch && statusOf(f.def.id) === "accepted").length;
   const attention = fields.filter((f) => f.confidence !== "high" && statusOf(f.def.id) === "pending").length;
   const highPending = fields.filter((f) => f.confidence === "high" && statusOf(f.def.id) === "pending").length;
 
@@ -292,18 +295,34 @@ export default function Extraction() {
             </button>
           );
         })}
-        {nonExtractable > 0 && (
+        {reviewsOnly.length > 0 && (
+          <span className="ml-2 flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50/70 px-2 py-1 text-[12px] text-sky-900">
+            <Info className="size-3.5 shrink-0 text-sky-700" />
+            {reviewsOnlyNote(reviewsOnly.length)}
+          </span>
+        )}
+        {nonExtractable - reviewsOnly.length > 0 && (
           <span className="ml-2 text-[12px] text-ink-muted">
-            + {nonExtractable} included record(s) not eligible for trial data extraction
+            + {nonExtractable - reviewsOnly.length} included record(s) not eligible for trial data extraction
           </span>
         )}
       </div>
 
       {/* Verification strip */}
       <div className="mb-3 max-w-full shrink-0 overflow-x-auto">
-        <Card className="grid min-h-14 min-w-[560px] grid-cols-[minmax(0,1fr)_minmax(0,2fr)] divide-x divide-line">
+        <Card className="grid min-h-14 min-w-[640px] grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line">
           <div className="flex items-center gap-3 px-4 xl:px-5 py-2">
-            <div className="shrink-0 text-[11.5px] text-ink-muted">Fields verified</div>
+            <div className="shrink-0 leading-tight">
+              <div className="text-[11.5px] text-ink-muted">Fields verified</div>
+              {batchAccepted > 0 && (
+                <div
+                  className="whitespace-nowrap text-[11px] tabular text-ink-soft"
+                  title="Fields accepted with the batch action are logged separately from individually verified fields"
+                >
+                  {resolved - batchAccepted} verified · {batchAccepted} accepted in batch
+                </div>
+              )}
+            </div>
             <div className="shrink-0 text-[20px] font-semibold leading-none tabular text-ink">
               <AnimatedNumber value={resolved} />
               <span className="text-[14px] font-normal text-ink-muted">/{fields.length}</span>
@@ -534,7 +553,7 @@ export default function Extraction() {
         note={
           allDocsDone
             ? "All extracted fields have been verified. Verified values will be used for synthesis."
-            : `${remainingTotal} field(s) still awaiting verification across ${extractable.length} documents.`
+            : `${remainingTotal} field(s) still awaiting verification across ${extractable.length} ${extractable.length === 1 ? "document" : "documents"}.`
         }
       >
         <Button size="lg" disabled={!allDocsDone} onClick={() => navigate("/review/synthesis")}>
@@ -699,7 +718,7 @@ function FieldRow({
           </div>
         ) : !editing ? (
           <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            <StatusPill status={status} />
+            <StatusPill status={status} batch={v?.batch} />
             <button
               type="button"
               title="Undo"
@@ -747,9 +766,11 @@ function ActionBtn({
   );
 }
 
-function StatusPill({ status }: { status: string }) {
+function StatusPill({ status, batch }: { status: string; batch?: boolean }) {
   const map: Record<string, { cls: string; label: string }> = {
-    accepted: { cls: "bg-brand-600 text-white", label: "Accepted" },
+    accepted: batch
+      ? { cls: "bg-brand-100 text-brand-800 ring-1 ring-brand-300", label: "Accepted in batch" }
+      : { cls: "bg-brand-600 text-white", label: "Accepted" },
     corrected: { cls: "bg-sky-700 text-white", label: "Corrected" },
     rejected: { cls: "bg-coral text-white", label: "Rejected" },
     adjudicate: { cls: "bg-[#b45309] text-white", label: "Adjudication" },

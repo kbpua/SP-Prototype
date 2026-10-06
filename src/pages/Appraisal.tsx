@@ -1,30 +1,25 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, BotOff, ChevronRight, ShieldCheck, Star, UserRound, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, BotOff, ChevronRight, ShieldCheck, UserRound, Wand2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { PageContainer, PageHeader, StageFooter } from "@/components/PageHeader";
+import { GUIDE_REFS, GuideRef } from "@/components/guide";
+import { ROB_OPTS, RobTrafficLight } from "@/components/RobTrafficLight";
 import {
   appraisalItemCount,
   useReview,
-  usesAmstar,
+  usesAmstar as usesAmstarFor,
   type AmstarAnswer,
   type DomainAssessment,
-  type RobJudgement,
 } from "@/state/ReviewContext";
 import { AMSTAR2_ITEMS, ROB2_DOMAINS, type CandidateStudy } from "@/data/mockData";
 import { cn } from "@/lib/utils";
-import { robOverall as baseRobOverall, type RobOverall } from "@/lib/review";
-
-const ROB_OPTS: { value: RobJudgement; label: string; cls: string; dot: string }[] = [
-  { value: "low", label: "Low risk", cls: "bg-brand-600 border-brand-600 text-white", dot: "bg-brand-500" },
-  { value: "some", label: "Some concerns", cls: "bg-[#b45309] border-[#b45309] text-white", dot: "bg-[#b45309]" },
-  { value: "high", label: "High risk", cls: "bg-coral border-coral text-white", dot: "bg-coral" },
-];
+import { amstarOverall as baseAmstarOverall, robOverall as baseRobOverall, type RobOverall } from "@/lib/review";
 
 const AMSTAR_OPTS: { value: AmstarAnswer; label: string; cls: string; dot: string }[] = [
   { value: "yes", label: "Yes", cls: "bg-brand-600 border-brand-600 text-white", dot: "bg-brand-500" },
@@ -40,19 +35,14 @@ function robOverall(a: Record<string, DomainAssessment> | undefined): Overall {
 }
 
 function amstarOverall(a: Record<string, DomainAssessment> | undefined): Overall {
-  if (AMSTAR2_ITEMS.some((i) => !a?.[i.id]?.judgement)) return { label: "In progress", tone: "neutral" };
-  const flaws = AMSTAR2_ITEMS.filter((i) => a?.[i.id]?.judgement === "no");
-  const critical = flaws.filter((i) => i.critical).length;
-  const weak = flaws.length - critical;
-  if (critical > 1) return { label: "Critically low confidence", tone: "coral" };
-  if (critical === 1) return { label: "Low confidence", tone: "coral" };
-  if (weak > 1) return { label: "Moderate confidence", tone: "amber" };
-  return { label: "High confidence", tone: "default" };
+  const o = baseAmstarOverall(a);
+  return o.label === "Not assessed" ? { label: "In progress", tone: "neutral" } : o;
 }
 
 export default function Appraisal() {
   const navigate = useNavigate();
-  const { included, appraisal, setDomain, loadSampleAppraisal, stageProgress } = useReview();
+  const { included, appraisal, setDomain, loadSampleAppraisal, stageProgress, designs } = useReview();
+  const usesAmstar = (s: CandidateStudy) => usesAmstarFor(s, designs);
   const [selectedId, setSelectedId] = useState<string | undefined>(included[0]?.id);
 
   useEffect(() => {
@@ -90,7 +80,7 @@ export default function Appraisal() {
             <UserRound /> Human review required
           </Badge>
         }
-        description="Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials and AMSTAR 2 for systematic reviews, as recommended by the Philippine HTA Methods Guide."
+        description="Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials. AMSTAR 2 applies to records tagged as systematic reviews (Guide Annex 7)."
       />
 
       <div className="mb-5 flex items-center gap-3 rounded-lg border border-flag/35 bg-flag-soft/70 px-3.5 py-1.5">
@@ -117,7 +107,7 @@ export default function Appraisal() {
           {included.map((s) => {
             const a = appraisal[s.id];
             const done = Object.values(a ?? {}).filter((d) => d.judgement).length;
-            const totalItems = appraisalItemCount(s);
+            const totalItems = appraisalItemCount(s, designs);
             const overall = usesAmstar(s) ? amstarOverall(a) : robOverall(a);
             const active = s.id === selectedId;
             return (
@@ -139,6 +129,14 @@ export default function Appraisal() {
                 </div>
                 <div className="mt-0.5 line-clamp-1 text-[12px] text-ink-muted">{s.title}</div>
                 <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "shrink-0 rounded border px-1.5 text-[10.5px] font-medium leading-[18px]",
+                      usesAmstar(s) ? "border-sky-200 bg-sky-50 text-sky-800" : "border-line bg-cream text-ink-soft",
+                    )}
+                  >
+                    {usesAmstar(s) ? "AMSTAR 2" : "Cochrane RoB 2"}
+                  </span>
                   <Progress value={(done / totalItems) * 100} className="h-1" />
                   <span className="shrink-0 text-[11px] tabular text-ink-muted">
                     {done}/{totalItems}
@@ -156,11 +154,14 @@ export default function Appraisal() {
               <CardHeader className="border-b border-line pb-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="neutral">{usesAmstar(selected) ? "AMSTAR 2" : "Cochrane RoB 2"}</Badge>
                       <span className="text-[12px] text-ink-muted">
-                        {usesAmstar(selected) ? "Systematic review" : "Outcome: primary composite endpoint"}
+                        {usesAmstar(selected)
+                          ? "Systematic review · appraised only (not extracted or pooled)"
+                          : "Outcome: primary composite endpoint"}
                       </span>
+                      <GuideRef>{GUIDE_REFS.appraisal}</GuideRef>
                     </div>
                     <CardTitle className="mt-2 text-[16px]">{selected.title}</CardTitle>
                     <CardDescription className="mt-1">
@@ -173,7 +174,7 @@ export default function Appraisal() {
                 {usesAmstar(selected) ? renderAmstar(selected) : renderRob2(selected)}
                 <div className="mt-4 flex items-center justify-between rounded-lg bg-cream px-4 py-3">
                   <div className="text-[13px] text-ink-soft">
-                    Overall judgement:{" "}
+                    {usesAmstar(selected) ? "Overall confidence:" : "Overall judgement:"}{" "}
                     <OverallBadge
                       overall={usesAmstar(selected) ? amstarOverall(appraisal[selected.id]) : robOverall(appraisal[selected.id])}
                     />
@@ -190,7 +191,7 @@ export default function Appraisal() {
         </div>
       </div>
 
-      <RobSummaryTable
+      <RobTrafficLight
         studies={included.filter((s) => !usesAmstar(s))}
         appraisal={appraisal}
         onSelect={setSelectedId}
@@ -253,22 +254,34 @@ export default function Appraisal() {
     const a = appraisal[study.id] ?? {};
     return (
       <div className="divide-y divide-line">
+        <div className="flex items-center justify-between pb-2 text-[11.5px] text-ink-muted">
+          <span>16 items · critical items 2, 4, 7, 9, 11, 13, 15</span>
+          <span>Yes / Partial yes / No</span>
+        </div>
         {AMSTAR2_ITEMS.map((item, i) => (
-          <div key={item.id} className="flex items-center gap-4 py-2.5">
-            <span className="w-6 text-[12px] tabular text-ink-muted">{i + 1}</span>
-            <span className="flex-1 text-[13px] text-ink">
-              {item.title}
-              {item.critical && (
-                <Badge variant="coral" className="ml-2">
-                  <Star /> Critical
-                </Badge>
-              )}
-            </span>
-            <JudgementPicker
-              size="sm"
-              options={AMSTAR_OPTS}
-              value={a[item.id]?.judgement}
-              onChange={(v) => setDomain(study.id, item.id, { judgement: v })}
+          <div key={item.id} className="py-2">
+            <div className="flex items-center gap-3">
+              <span className="w-5 shrink-0 text-[12px] tabular text-ink-muted">{i + 1}</span>
+              <span className="min-w-0 flex-1 text-[13px] text-ink">
+                {item.title}
+                {item.critical && (
+                  <span className="ml-1.5 rounded border border-coral/35 bg-coral-soft px-1 py-px text-[10px] font-medium text-[#991b1b]">
+                    critical
+                  </span>
+                )}
+              </span>
+              <JudgementPicker
+                size="sm"
+                options={AMSTAR_OPTS}
+                value={a[item.id]?.judgement}
+                onChange={(v) => setDomain(study.id, item.id, { judgement: v })}
+              />
+            </div>
+            <Input
+              value={a[item.id]?.note ?? ""}
+              onChange={(e) => setDomain(study.id, item.id, { note: e.target.value })}
+              placeholder="Justification (optional)"
+              className="mt-1.5 ml-8 h-7 w-[calc(100%-2rem)] bg-white text-[12px]"
             />
           </div>
         ))}
@@ -313,87 +326,5 @@ function OverallBadge({ overall }: { overall: Overall }) {
     <Badge variant={overall.tone} className="ml-1 text-[12px]">
       {overall.label}
     </Badge>
-  );
-}
-
-function RobSummaryTable({
-  studies,
-  appraisal,
-  onSelect,
-}: {
-  studies: CandidateStudy[];
-  appraisal: Record<string, Record<string, DomainAssessment>>;
-  onSelect: (id: string) => void;
-}) {
-  if (studies.length === 0) return null;
-  const cell = (j?: string) => {
-    const opt = ROB_OPTS.find((o) => o.value === j);
-    return (
-      <span
-        className={cn(
-          "mx-auto grid size-6 place-items-center rounded-full text-[11px] font-bold transition-colors duration-300",
-          opt ? cn(opt.dot, "text-white") : "border border-dashed border-line text-ink-muted/50",
-        )}
-      >
-        {j === "low" ? "+" : j === "some" ? "−" : j === "high" ? "×" : "?"}
-      </span>
-    );
-  };
-  return (
-    <Card className="mt-6">
-      <CardHeader className="flex-row items-center justify-between">
-        <div>
-          <CardTitle>Risk-of-bias summary</CardTitle>
-          <CardDescription>Traffic-light plot across RoB 2 domains for included trials</CardDescription>
-        </div>
-        <div className="flex items-center gap-4 text-[12px] text-ink-muted">
-          {ROB_OPTS.map((o) => (
-            <span key={o.value} className="flex items-center gap-1.5">
-              <span className={cn("size-2.5 rounded-full", o.dot)} /> {o.label}
-            </span>
-          ))}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="border-b border-line text-[12px] text-ink-muted">
-              <th className="py-2 text-left font-medium">Study</th>
-              {ROB2_DOMAINS.map((d) => (
-                <th key={d.id} className="w-20 py-2 font-medium" title={d.title}>
-                  {d.id.toUpperCase()}
-                </th>
-              ))}
-              <th className="w-36 py-2 font-medium">Overall</th>
-            </tr>
-          </thead>
-          <tbody>
-            {studies.map((s) => {
-              const a = appraisal[s.id];
-              const overall = robOverall(a);
-              return (
-                <tr
-                  key={s.id}
-                  className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-cream/60"
-                  onClick={() => onSelect(s.id)}
-                >
-                  <td className="py-2.5 font-medium text-ink">
-                    {s.trial?.acronym ?? s.authors.split(",")[0]} <span className="font-normal text-ink-muted">{s.year}</span>
-                  </td>
-                  {ROB2_DOMAINS.map((d) => (
-                    <td key={d.id} className="py-2.5 text-center">
-                      {cell(a?.[d.id]?.judgement)}
-                    </td>
-                  ))}
-                  <td className="py-2.5 text-center">
-                    <Badge variant={overall.tone}>{overall.label}</Badge>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </CardContent>
-    </Card>
   );
 }

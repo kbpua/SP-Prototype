@@ -5,11 +5,16 @@ import {
   ROB2_DOMAINS,
   DEFAULT_REVIEW_CONFIG,
   EXTRACTION_FIELDS,
+  INELIGIBILITY_CODES,
+  SAMPLE_AMSTAR2,
   SAMPLE_ROB2,
   getExtractedFields,
+  isSupportedDesign,
   type CandidateStudy,
   type FieldId,
+  type IneligibilityCode,
   type SchemaKey,
+  type StudyDesign,
 } from "@/data/mockData";
 import type { EffectMeasure } from "@/lib/meta";
 
@@ -21,6 +26,11 @@ export type FieldStatus = "pending" | "accepted" | "corrected" | "rejected" | "a
 export interface ScreeningDecision {
   decision: Decision;
   reason?: string;
+  code?: IneligibilityCode;
+  /** Short text recorded with the "Other" code. */
+  codeNote?: string;
+  /** True when the analyst changed the system-suggested code. */
+  codeEdited?: boolean;
 }
 
 export interface DomainAssessment {
@@ -31,6 +41,8 @@ export interface DomainAssessment {
 export interface FieldVerification {
   status: FieldStatus;
   value?: string;
+  /** Accepted through the batch "Accept high-confidence" action. */
+  batch?: boolean;
 }
 
 export interface ReviewConfig {
@@ -42,9 +54,21 @@ export interface ReviewConfig {
   studyDesign: string;
   inclusion: string[];
   exclusion: string[];
+  exclusionCodes: Record<string, IneligibilityCode>;
+  /** Justifications for restrictive criteria (language, publication type). */
+  justifications: Record<string, string>;
   schemas: Record<SchemaKey, boolean>;
   effectMeasure: EffectMeasure;
   configured: boolean;
+}
+
+export type GradeDomain = "rob" | "consistency" | "precision" | "directness" | "reporting";
+export type GradeLevel = "not-serious" | "serious" | "very-serious";
+export type GradeCertainty = "high" | "moderate" | "low" | "very-low";
+
+export interface GradeState {
+  domains: Partial<Record<GradeDomain, GradeLevel>>;
+  overall?: GradeCertainty;
 }
 
 export type StageKey = "config" | "screening" | "appraisal" | "extraction" | "synthesis" | "export";
@@ -52,33 +76,62 @@ export type StageKey = "config" | "screening" | "appraisal" | "extraction" | "sy
 interface ReviewState {
   config: ReviewConfig;
   screening: Record<string, ScreeningDecision>;
-  /** Reviewer-edited screening rationales; absent means the AI text is used. */
+  /** Reviewer-edited screening rationales; absent means the system-suggested text is used. */
   rationales: Record<string, string>;
+  /** Analyst overrides of the Design chip; absent means the imported design. */
+  designs: Record<string, StudyDesign>;
   appraisal: Record<string, Record<string, DomainAssessment>>;
   verification: Record<string, Partial<Record<FieldId, FieldVerification>>>;
+  grade: GradeState;
   visited: StageKey[];
 }
 
-const STORAGE_KEY = "hta-prototype-state-v1";
+export interface PrismaCounts {
+  identified: number;
+  duplicates: number;
+  screened: number;
+  excluded: number;
+  included: number;
+  maybe: number;
+  undecided: number;
+  byCode: Record<IneligibilityCode, number>;
+}
+
+const STORAGE_KEY = "hta-prototype-state-v2";
+
+/** Records that enter title/abstract screening (duplicates are removed beforehand). */
+export const SCREENABLE_STUDIES = CANDIDATE_STUDIES.filter((c) => !c.duplicateOf);
 
 const initialState: ReviewState = {
   config: {
     ...DEFAULT_REVIEW_CONFIG,
+    exclusionCodes: { ...DEFAULT_REVIEW_CONFIG.exclusionCodes },
+    justifications: {},
     schemas: { annex8: true, consort: true, prisma: true },
     effectMeasure: "RR",
     configured: false,
   },
   screening: {},
   rationales: {},
+  designs: {},
   appraisal: {},
   verification: {},
+  grade: { domains: {} },
   visited: [],
 };
 
 function loadState(): ReviewState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...initialState, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<ReviewState>;
+      const config = { ...initialState.config, ...saved.config };
+      return {
+        ...initialState,
+        ...saved,
+        config: { ...config, schemas: { ...config.schemas, annex8: true } },
+      };
+    }
   } catch {
     /* ignore corrupt storage */
   }
@@ -90,14 +143,20 @@ interface ReviewContextValue extends ReviewState {
   setDecision: (id: string, decision: ScreeningDecision | null) => void;
   applySuggestedDecisions: () => void;
   setRationale: (id: string, text: string | null) => void;
+  setDesign: (id: string, design: StudyDesign) => void;
+  designOf: (study: CandidateStudy) => StudyDesign;
   setDomain: (studyId: string, domainId: string, patch: Partial<DomainAssessment>) => void;
   loadSampleAppraisal: () => void;
   setField: (studyId: string, fieldId: FieldId, v: FieldVerification) => void;
   acceptHighConfidence: (studyIds: string[]) => void;
+  setGrade: (patch: Partial<GradeState>) => void;
   markVisited: (stage: StageKey) => void;
   reset: () => void;
   included: CandidateStudy[];
   extractable: CandidateStudy[];
+  /** Included records tagged as systematic reviews (appraised only). */
+  reviewsOnly: CandidateStudy[];
+  prisma: PrismaCounts;
   stageProgress: Record<StageKey, number>;
 }
 
@@ -132,15 +191,37 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setDesign = useCallback((id: string, design: StudyDesign) => {
+    setState((s) => {
+      const designs = { ...s.designs };
+      const study = CANDIDATE_STUDIES.find((c) => c.id === id);
+      if (study?.design === design) delete designs[id];
+      else designs[id] = design;
+      return { ...s, designs };
+    });
+  }, []);
+
+  const designOf = useCallback(
+    (study: CandidateStudy) => state.designs[study.id] ?? study.design,
+    [state.designs],
+  );
+
   const applySuggestedDecisions = useCallback(() => {
     setState((s) => {
       const screening = { ...s.screening };
-      for (const c of CANDIDATE_STUDIES) {
+      for (const c of SCREENABLE_STUDIES) {
         const existing = screening[c.id];
-        if (existing?.decision === "exclude" && !existing.reason && c.suggested.decision === "exclude") {
-          screening[c.id] = { decision: "exclude", reason: c.suggested.reason };
-        } else if (!existing || existing.decision === "maybe") {
-          screening[c.id] = { decision: c.suggested.decision, reason: c.suggested.reason };
+        if (existing && existing.decision !== "maybe") continue;
+        if (c.suggested.decision === "include") {
+          screening[c.id] = { decision: "include" };
+        } else {
+          const sug = suggestedExclusion(c, s.designs[c.id] ?? c.design);
+          screening[c.id] = {
+            decision: "exclude",
+            reason: c.suggested.reason,
+            code: sug.code ?? "Other",
+            codeNote: sug.note ?? (sug.code ? undefined : "Not specified"),
+          };
         }
       }
       return { ...s, screening };
@@ -161,7 +242,8 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
   const loadSampleAppraisal = useCallback(() => {
     setState((s) => {
       const appraisal = { ...s.appraisal };
-      for (const [id, domains] of Object.entries(SAMPLE_ROB2)) {
+      for (const [id, domains] of [...Object.entries(SAMPLE_ROB2), ...Object.entries(SAMPLE_AMSTAR2)]) {
+        if (s.screening[id]?.decision !== "include") continue;
         appraisal[id] = Object.fromEntries(
           Object.entries(domains).map(([d, v]) => [d, { judgement: v.j, note: v.note }]),
         );
@@ -191,13 +273,17 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         for (const f of getExtractedFields(study.trial)) {
           if (!active.has(f.def.id)) continue;
           if (f.confidence === "high" && (current[f.def.id]?.status ?? "pending") === "pending") {
-            current[f.def.id] = { status: "accepted" };
+            current[f.def.id] = { status: "accepted", batch: true };
           }
         }
         verification[id] = current;
       }
       return { ...s, verification };
     });
+  }, []);
+
+  const setGrade = useCallback((patch: Partial<GradeState>) => {
+    setState((s) => ({ ...s, grade: { ...s.grade, ...patch } }));
   }, []);
 
   const markVisited = useCallback((stage: StageKey) => {
@@ -208,20 +294,45 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
 
   const included = useMemo(
     () =>
-      CANDIDATE_STUDIES.filter((c) => state.screening[c.id]?.decision === "include").sort(
+      SCREENABLE_STUDIES.filter((c) => state.screening[c.id]?.decision === "include").sort(
         (a, b) => b.relevance - a.relevance,
       ),
     [state.screening],
   );
-  const extractable = useMemo(() => included.filter((c) => c.trial), [included]);
+  const extractable = useMemo(
+    () => included.filter((c) => c.trial && (state.designs[c.id] ?? c.design) === "RCT"),
+    [included, state.designs],
+  );
+  const reviewsOnly = useMemo(
+    () => included.filter((c) => usesAmstar(c, state.designs)),
+    [included, state.designs],
+  );
+
+  const prisma = useMemo<PrismaCounts>(() => {
+    const byCode = Object.fromEntries(INELIGIBILITY_CODES.map((c) => [c.code, 0])) as Record<IneligibilityCode, number>;
+    const c = { include: 0, exclude: 0, maybe: 0, undecided: 0 };
+    for (const s of SCREENABLE_STUDIES) {
+      const d = state.screening[s.id];
+      if (!d) c.undecided++;
+      else c[d.decision]++;
+      if (d?.decision === "exclude") byCode[d.code ?? "Other"]++;
+    }
+    return {
+      identified: CANDIDATE_STUDIES.length,
+      duplicates: CANDIDATE_STUDIES.length - SCREENABLE_STUDIES.length,
+      screened: SCREENABLE_STUDIES.length,
+      excluded: c.exclude,
+      included: c.include,
+      maybe: c.maybe,
+      undecided: c.undecided,
+      byCode,
+    };
+  }, [state.screening]);
 
   const stageProgress = useMemo<Record<StageKey, number>>(() => {
-    const decided = CANDIDATE_STUDIES.filter((c) => {
-      const d = state.screening[c.id]?.decision;
-      return d === "include" || d === "exclude";
-    }).length;
+    const decided = prisma.included + prisma.excluded;
 
-    const appraisalTotal = included.reduce((acc, c) => acc + appraisalItemCount(c), 0);
+    const appraisalTotal = included.reduce((acc, c) => acc + appraisalItemCount(c, state.designs), 0);
     const appraisalDone = included.reduce((acc, c) => {
       const a = state.appraisal[c.id] ?? {};
       return acc + Object.values(a).filter((d) => d.judgement).length;
@@ -241,13 +352,13 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
 
     return {
       config: state.config.configured ? 100 : 0,
-      screening: Math.round((decided / CANDIDATE_STUDIES.length) * 100),
+      screening: Math.round((decided / prisma.screened) * 100),
       appraisal: appraisalTotal ? Math.min(100, Math.round((appraisalDone / appraisalTotal) * 100)) : 0,
       extraction: fieldTotal ? Math.round((fieldDone / fieldTotal) * 100) : 0,
       synthesis: state.visited.includes("synthesis") ? 100 : 0,
       export: state.visited.includes("export") ? 100 : 0,
     };
-  }, [state, included, extractable]);
+  }, [state, included, extractable, prisma]);
 
   const value: ReviewContextValue = {
     ...state,
@@ -255,14 +366,19 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     setDecision,
     applySuggestedDecisions,
     setRationale,
+    setDesign,
+    designOf,
     setDomain,
     loadSampleAppraisal,
     setField,
     acceptHighConfidence,
+    setGrade,
     markVisited,
     reset,
     included,
     extractable,
+    reviewsOnly,
+    prisma,
     stageProgress,
   };
 
@@ -283,12 +399,31 @@ export function activeFieldIds(schemas: Record<SchemaKey, boolean>): Set<FieldId
   );
 }
 
-export function usesAmstar(study: CandidateStudy) {
-  return study.design === "Systematic review";
+/**
+ * Ineligibility code the system pre-selects when a record is excluded.
+ * An analyst-changed Design chip takes precedence over the record's matched criterion.
+ */
+export function suggestedExclusion(
+  study: CandidateStudy,
+  design: StudyDesign,
+): { code?: IneligibilityCode; note?: string } {
+  const designChanged = design !== study.design;
+  if (designChanged && design === "Conference abstract") {
+    return { code: "Other", note: "Publication type: conference abstract" };
+  }
+  if (designChanged && !isSupportedDesign(design)) return { code: "S" };
+  if (study.suggested.code) return { code: study.suggested.code, note: study.suggested.codeNote };
+  if (design === "Conference abstract") return { code: "Other", note: "Publication type: conference abstract" };
+  if (!isSupportedDesign(design)) return { code: "S" };
+  return {};
 }
 
-export function appraisalItemCount(study: CandidateStudy) {
-  return usesAmstar(study) ? AMSTAR2_ITEMS.length : ROB2_DOMAINS.length;
+export function usesAmstar(study: CandidateStudy, designs?: Record<string, StudyDesign>) {
+  return (designs?.[study.id] ?? study.design) === "Systematic review";
+}
+
+export function appraisalItemCount(study: CandidateStudy, designs?: Record<string, StudyDesign>) {
+  return usesAmstar(study, designs) ? AMSTAR2_ITEMS.length : ROB2_DOMAINS.length;
 }
 
 /** Final value of a field after human verification (null when rejected). */
