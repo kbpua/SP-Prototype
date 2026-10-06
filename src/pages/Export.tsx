@@ -20,9 +20,24 @@ import { Segmented } from "@/components/ui/segmented";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { PageContainer, PageHeader } from "@/components/PageHeader";
 import { GUIDE_REFS, GuideRef } from "@/components/guide";
-import { activeFieldIds, appraisalItemCount, useReview, usesAmstar } from "@/state/ReviewContext";
-import { ACTIVE_REVIEW_ID, CANDIDATE_STUDIES, SCREENING_RATIONALES, getExtractedFields } from "@/data/mockData";
+import {
+  RESOLVER_ROLE,
+  ROLE_LABELS,
+  activeFieldIds,
+  appraisalItemCount,
+  useReview,
+  usesAmstar,
+} from "@/state/ReviewContext";
+import {
+  ACTIVE_REVIEW_ID,
+  CANDIDATE_STUDIES,
+  SCREENING_RATIONALES,
+  getExtractedFields,
+  type SchemaKey,
+} from "@/data/mockData";
+import { PROTOTYPE_CONFIG } from "@/config/prototypeConfig";
 import { dersimonianLaird } from "@/lib/meta";
+import { MEASURE_METHOD, outcomeDataKey } from "@/lib/effectMeasures";
 import {
   ANNEX8_EXTENSIONS,
   ANNEX8_HEADERS,
@@ -44,6 +59,10 @@ export default function Export() {
   const {
     config,
     screening,
+    screeningDual,
+    fieldDual,
+    tagDual,
+    tags,
     rationales,
     designs,
     designOf,
@@ -54,8 +73,14 @@ export default function Export() {
     appraisal,
     grade,
     prisma,
+    screeningAgreement,
+    extractionAgreement,
+    fieldsResolved,
     stageProgress,
     visited,
+    effectMeasures,
+    primaryOutcome,
+    effectMeasureLog,
     markVisited,
   } = useReview();
   const [format, setFormat] = useState<Format>("json");
@@ -63,23 +88,78 @@ export default function Export() {
 
   useEffect(() => markVisited("export"), [markVisited]);
 
-  const activeIds = activeFieldIds(config.schemas);
-  const measure = config.effectMeasure === "MD" ? "RR" : config.effectMeasure;
-  const { inputs } = buildStudyInputs(extractable, verification);
-  const pooled = dersimonianLaird(measure, inputs);
+  const showOos = PROTOTYPE_CONFIG.showOutOfScopeMocks;
+  const activeIds = activeFieldIds(config.schemas, effectMeasures);
+  const enabledSchemas = (Object.keys(config.schemas) as SchemaKey[]).filter((k) => config.schemas[k]);
+  const measure = primaryOutcome?.measure ?? "HR";
+  const { inputs } = buildStudyInputs(extractable, verification, true, primaryOutcome);
+  const extractedOutcomes = effectMeasures.filter((o) => outcomeDataKey(o));
+  const unresolvedFields = fieldsResolved.total - fieldsResolved.resolved;
+  const pooled = unresolvedFields === 0 || PROTOTYPE_CONFIG.synthesisGate === "warn" ? dersimonianLaird(measure, inputs) : null;
 
-  const fieldsTotal = extractable.length * activeIds.size;
-  const fieldsVerified = extractable.reduce(
-    (acc, s) => acc + [...activeIds].filter((id) => (verification[s.id]?.[id]?.status ?? "pending") !== "pending").length,
-    0,
-  );
+  const fieldsTotal = fieldsResolved.total;
+  const fieldsVerified = fieldsResolved.resolved;
+  const openTags = tags.filter((t) => !t.final).length;
 
   const gradeSuggested = gradeSuggestions(
     pooled,
     inputs.map((i) => robOverall(appraisal[i.id]).label),
   );
 
-  const annex8Rows = extractable.map((s) => ({ study: s, ...annex8Row(s, verification, appraisal, activeIds) }));
+  const finalTagLabel = (t: (typeof tags)[number]) =>
+    t.final?.status === "corrected" ? (t.final.value ?? t.label) : t.label;
+  const exportedTags = tags.filter((t) => t.final && t.final.status !== "removed");
+
+  const agreementText = (a: typeof extractionAgreement) =>
+    a.percent === null
+      ? "not yet paired"
+      : `${a.percent.toFixed(1)}% (kappa ${a.kappa === null ? "not estimable" : a.kappa.toFixed(2)})`;
+
+  const resolutionText = (studyId: string) => {
+    const recs = Object.values(fieldDual[studyId] ?? {});
+    const adjudicated = recs.filter((r) => r?.resolved).length;
+    const unresolved = [...activeIds].filter((id) => !verification[studyId]?.[id]).length;
+    return unresolved > 0
+      ? `${unresolved} field(s) unresolved`
+      : `All resolved (${adjudicated} by ${ROLE_LABELS[RESOLVER_ROLE].toLowerCase()})`;
+  };
+
+  const annex8Rows = extractable.flatMap((s) =>
+    extractedOutcomes.map((o) => ({
+      study: s,
+      key: `${s.id}:${o.outcomeId}`,
+      ...annex8Row(s, verification, appraisal, activeIds, o, {
+        stakeholderTags: exportedTags.filter((t) => t.studyId === s.id).map(finalTagLabel).join("; ") || "—",
+        resolution: resolutionText(s.id),
+        agreement: agreementText(extractionAgreement),
+      }),
+    })),
+  );
+
+  const decidedBy = (id: string) => {
+    const rec = screeningDual[id];
+    if (rec?.resolved) return `${ROLE_LABELS[rec.resolved.resolver]} (resolved conflict)`;
+    return "Reviewer A + Reviewer B (agreed)";
+  };
+
+  const ineligibilityRows = CANDIDATE_STUDIES.flatMap((s) => {
+    const record = `${s.id} · ${s.authors.split(",")[0]} ${s.year} · ${s.title}`;
+    if (s.duplicateOf) {
+      return [{ record, design: designOf(s), code: "", rationale: `Duplicate of ${s.duplicateOf}`, decided_by: "HTA Analyst", status: "Duplicate removed (not coded)" }];
+    }
+    const d = screening[s.id];
+    if (d?.decision !== "exclude") return [];
+    return [
+      {
+        record,
+        design: designOf(s),
+        code: d.code ? (d.code === "Other" && d.codeNote ? `Other: ${d.codeNote}` : d.code) : "",
+        rationale: rationales[s.id] ?? SCREENING_RATIONALES[s.id] ?? "",
+        decided_by: decidedBy(s.id),
+        status: `Excluded (confirmed) · ${d.codeEdited ? "Analyst-edited code" : "System-suggested code"}`,
+      },
+    ];
+  });
 
   const appraisalTally = (tool: "rob2" | "amstar") => {
     const studies = included.filter((s) => (tool === "amstar") === usesAmstar(s, designs));
@@ -92,12 +172,14 @@ export default function Export() {
 
   const remaining: string[] = [];
   if (!config.configured) remaining.push("configuration not confirmed");
-  if (prisma.undecided > 0) remaining.push(`${prisma.undecided} records undecided`);
+  if (screeningAgreement.openConflicts > 0) remaining.push(`${screeningAgreement.openConflicts} screening conflicts unresolved`);
+  if (prisma.undecided > 0) remaining.push(`${prisma.undecided} records without a final decision`);
   if (prisma.maybe > 0) remaining.push(`${prisma.maybe} marked Maybe`);
   if (rob2Tally.done < rob2Tally.total) remaining.push(`appraisal ${rob2Tally.done}/${rob2Tally.total} RoB 2 domains`);
-  if (amstarTally.done < amstarTally.total)
+  if (showOos && amstarTally.done < amstarTally.total)
     remaining.push(`appraisal ${amstarTally.done}/${amstarTally.total} AMSTAR 2 items`);
-  if (fieldsVerified < fieldsTotal) remaining.push(`${fieldsTotal - fieldsVerified} fields awaiting verification`);
+  if (fieldsVerified < fieldsTotal) remaining.push(`${fieldsTotal - fieldsVerified} fields unresolved`);
+  if (openTags > 0) remaining.push(`${openTags} stakeholder tags unresolved`);
   if (!visited.includes("synthesis")) remaining.push("synthesis not reviewed");
   const complete = remaining.length === 0;
   const appraisalIncomplete = stageProgress.appraisal < 100;
@@ -110,13 +192,22 @@ export default function Export() {
         framework: "Aligned to the Philippine HTA Methods Guide (DOH-HTAC, RA 11223)",
         exported_at: new Date().toISOString(),
         pipeline_status: complete ? "complete" : "incomplete",
-        picos: {
+        schema: enabledSchemas,
+        pico: {
           population: config.population,
           intervention: config.intervention,
           comparator: config.comparator,
           outcome: config.outcome,
           study_design: config.studyDesign,
         },
+        effectMeasures: effectMeasures.map((o) => ({
+          outcomeId: o.outcomeId,
+          outcomeName: o.outcomeName,
+          type: o.type,
+          measure: o.measure,
+          isPrimary: o.isPrimary,
+        })),
+        effectMeasureChanges: effectMeasureLog,
         prisma: {
           identified: prisma.identified,
           duplicates_removed: prisma.duplicates,
@@ -128,7 +219,7 @@ export default function Export() {
           undecided: prisma.undecided,
         },
         studies: extractable.map((s) => {
-          const v = finalValues(s, verification);
+          const v = finalValues(s, verification, true);
           return {
             id: s.id,
             acronym: s.trial?.acronym,
@@ -139,31 +230,82 @@ export default function Export() {
                 .filter((f) => activeIds.has(f.def.id))
                 .map((f) => {
                   const ver = verification[s.id]?.[f.def.id];
+                  const rec = fieldDual[s.id]?.[f.def.id];
                   return [
                     f.def.id,
-                    {
-                      value: v[f.def.id],
-                      status: ver?.status ?? "pending",
-                      ...(ver?.batch ? { accepted_in_batch: true } : {}),
-                      confidence: f.confidence,
-                      source: f.def.source,
-                      schema: f.def.schemas.filter((x) => config.schemas[x.key]).map((x) => `${x.key}:${x.item}`),
-                    },
+                    ver
+                      ? {
+                          value: v[f.def.id],
+                          status: "resolved",
+                          decision: ver.status,
+                          resolved_by: rec?.resolved ? ROLE_LABELS[rec.resolved.resolver] : "Reviewer A + Reviewer B (agreed)",
+                          ...(ver.batch ? { accepted_in_batch: true } : {}),
+                          confidence: f.confidence,
+                          source: f.def.source,
+                          schema: f.def.schemas.filter((x) => config.schemas[x.key]).map((x) => `${x.key}:${x.item}`),
+                        }
+                      : { value: null, status: "unresolved", source: f.def.source },
                   ];
                 }),
             ),
           };
         }),
-        systematic_reviews_appraised: reviewsOnly.map((s) => ({
-          id: s.id,
-          citation: `${s.authors} (${s.year}). ${s.journal}.`,
-          tool: "AMSTAR 2",
-          overall_confidence: amstarOverall(appraisal[s.id]).label,
-          note: "Appraised only; not extracted or pooled (RCT-only scope).",
-        })),
+        ...(showOos
+          ? {
+              systematic_reviews_appraised: reviewsOnly.map((s) => ({
+                id: s.id,
+                citation: `${s.authors} (${s.year}). ${s.journal}.`,
+                tool: "AMSTAR 2",
+                overall_confidence: amstarOverall(appraisal[s.id]).label,
+                note: "Appraised only; not extracted or pooled (RCT-only scope).",
+              })),
+            }
+          : {}),
+        reviewerAgreement: {
+          label: "Reviewer-versus-reviewer agreement (distinct from module-versus-gold-standard kappa)",
+          screening: {
+            records: screeningAgreement.items,
+            paired: screeningAgreement.paired,
+            conflicts: screeningAgreement.conflicts,
+            code_mismatches: screeningAgreement.codeMismatches,
+            resolved: screeningAgreement.resolved,
+            percent_agreement: screeningAgreement.percent === null ? null : +screeningAgreement.percent.toFixed(1),
+            cohen_kappa: screeningAgreement.kappa === null ? "not estimable" : +screeningAgreement.kappa.toFixed(3),
+            categories: "Include / Maybe / Exclude (Maybe as its own category)",
+          },
+          extraction: {
+            items: extractionAgreement.items,
+            paired: extractionAgreement.paired,
+            conflicts: extractionAgreement.conflicts,
+            resolved: extractionAgreement.resolved,
+            percent_agreement: extractionAgreement.percent === null ? null : +extractionAgreement.percent.toFixed(1),
+            cohen_kappa: extractionAgreement.kappa === null ? "not estimable" : +extractionAgreement.kappa.toFixed(3),
+          },
+          tie_break: ROLE_LABELS[RESOLVER_ROLE],
+          limitation: "Third-reviewer escalation and appraisal-stage dual review are not implemented.",
+        },
+        ineligibilityLog: ineligibilityRows,
+        stakeholderTags: {
+          method: "Rule-based keyword matching on analyst-selected categories; not benchmarked. Not an ELSI assessment.",
+          categories_selected: config.stakeholderCategories,
+          tags: exportedTags.map((t) => ({
+            study: t.studyId,
+            field: t.fieldId,
+            category: t.categoryId,
+            tag: finalTagLabel(t),
+            decision: t.final?.status,
+          })),
+        },
         meta_analysis: pooled && {
           model: "random-effects (DerSimonian–Laird)",
           measure,
+          outcome: primaryOutcome?.outcomeName,
+          outcome_type: primaryOutcome?.type,
+          method: MEASURE_METHOD[measure],
+          resolved_fields_used: inputs.reduce(
+            (acc, i) => acc + [...activeIds].filter((id) => verification[i.id]?.[id]).length,
+            0,
+          ),
           k: pooled.studies.length,
           estimate: +pooled.est.toFixed(3),
           ci_95: [+pooled.lo.toFixed(3), +pooled.hi.toFixed(3)],
@@ -178,21 +320,25 @@ export default function Export() {
                   df: pooled.df,
                 },
         },
-        grade: {
-          outcome: "Primary composite outcome",
-          domains: Object.fromEntries(
-            GRADE_DOMAINS.map((d) => {
-              const set = grade.domains[d.id];
-              const value = set ?? gradeSuggested[d.id] ?? null;
-              return [
-                d.id,
-                { value, source: set ? "analyst-entered" : value ? "system-suggested" : "not entered" },
-              ];
-            }),
-          ),
-          overall_certainty: grade.overall ?? null,
-          note: "System suggests, analyst decides. Overall certainty is analyst-entered.",
-        },
+        ...(showOos
+          ? {
+              grade: {
+                outcome: "Primary composite outcome",
+                domains: Object.fromEntries(
+                  GRADE_DOMAINS.map((d) => {
+                    const set = grade.domains[d.id];
+                    const value = set ?? gradeSuggested[d.id] ?? null;
+                    return [
+                      d.id,
+                      { value, source: set ? "analyst-entered" : value ? "system-suggested" : "not entered" },
+                    ];
+                  }),
+                ),
+                overall_certainty: grade.overall ?? null,
+                note: "System suggests, analyst decides. Overall certainty is analyst-entered.",
+              },
+            }
+          : {}),
       };
       return JSON.stringify(data, null, 2);
     }
@@ -202,45 +348,53 @@ export default function Export() {
       return [header, ...rows].join("\n");
     }
     if (format === "ineligibility") {
-      const header = ["record", "design", "code", "rationale", "decided_by", "status"].join(",");
-      const rows = CANDIDATE_STUDIES.flatMap((s) => {
-        const record = `${s.id} · ${s.authors.split(",")[0]} ${s.year} · ${s.title}`;
-        if (s.duplicateOf) {
-          return [[record, designOf(s), "", `Duplicate of ${s.duplicateOf}`, "HTA Analyst", "Duplicate removed (not coded)"]];
-        }
-        const d = screening[s.id];
-        if (d?.decision !== "exclude") return [];
-        return [
-          [
-            record,
-            designOf(s),
-            d.code ? (d.code === "Other" && d.codeNote ? `Other: ${d.codeNote}` : d.code) : "",
-            rationales[s.id] ?? SCREENING_RATIONALES[s.id] ?? "",
-            "HTA Analyst",
-            `Excluded (confirmed) · ${d.codeEdited ? "Analyst-edited code" : "System-suggested code"}`,
-          ],
-        ];
-      });
-      return [header, ...rows.map((r) => r.map(csvEscape).join(","))].join("\n");
+      const cols = ["record", "design", "code", "rationale", "decided_by", "status"] as const;
+      const rows = ineligibilityRows.map((r) => cols.map((c) => csvEscape(r[c])).join(","));
+      return [cols.join(","), ...rows].join("\n");
     }
-    const log = extractable.flatMap((s) =>
-      getExtractedFields(s.trial!)
-        .filter((f) => verification[s.id]?.[f.def.id] && verification[s.id]?.[f.def.id]?.status !== "pending")
-        .map((f) => {
-          const ver = verification[s.id]![f.def.id]!;
-          return {
-            study: s.trial?.acronym,
-            field: f.def.id,
-            action: ver.batch ? "accepted in batch" : ver.status,
-            extracted: f.extracted,
-            final: ver.status === "corrected" ? ver.value : ver.status === "rejected" ? null : f.extracted,
-            model_confidence: f.confidence,
-            source: f.def.source,
-            reviewer: "HTA Analyst",
-          };
-        }),
-    );
-    return JSON.stringify({ review_id: ACTIVE_REVIEW_ID, verification_log: log }, null, 2);
+    type Entry = { item: string; action: string; value?: string | null; by: string; at: string };
+    const entries: Entry[] = [];
+    const pushDual = (
+      item: string,
+      rec: { A?: { at: string }; B?: { at: string }; resolved?: { at: string; resolver: keyof typeof ROLE_LABELS } } | undefined,
+      describe: (v: never) => { action: string; value?: string | null },
+    ) => {
+      if (!rec) return;
+      for (const r of ["A", "B"] as const) {
+        const v = rec[r];
+        if (v) entries.push({ item, ...describe(v as never), by: ROLE_LABELS[r], at: v.at });
+      }
+      if (rec.resolved) entries.push({ item, ...describe(rec.resolved as never), by: `${ROLE_LABELS[rec.resolved.resolver]} (resolution)`, at: rec.resolved.at });
+    };
+    for (const s of CANDIDATE_STUDIES) {
+      pushDual(`screening:${s.id}`, screeningDual[s.id], (v: { decision: string; code?: string }) => ({
+        action: v.decision,
+        value: v.code ?? null,
+      }));
+    }
+    for (const s of extractable) {
+      for (const f of getExtractedFields(s.trial!)) {
+        pushDual(`field:${s.trial?.acronym}:${f.def.id}`, fieldDual[s.id]?.[f.def.id], (v: { status: string; value?: string; batch?: boolean }) => ({
+          action: v.batch ? "accepted in batch" : v.status,
+          value: v.status === "corrected" ? v.value : v.status === "rejected" ? null : f.extracted,
+        }));
+        pushDual(`tag:${s.trial?.acronym}:${f.def.id}`, tagDual[s.id]?.[f.def.id], (v: { status: string; value?: string }) => ({
+          action: v.status,
+          value: v.value ?? null,
+        }));
+      }
+    }
+    for (const c of effectMeasureLog) {
+      entries.push({
+        item: `effect_measure:${c.outcomeId}`,
+        action: `${c.setting} ${c.note}`,
+        value: `${c.previous} → ${c.next}`,
+        by: c.role,
+        at: c.at,
+      });
+    }
+    entries.sort((a, b) => a.at.localeCompare(b.at));
+    return JSON.stringify({ review_id: ACTIVE_REVIEW_ID, verification_log: entries }, null, 2);
   };
 
   const content = build(format);
@@ -266,8 +420,12 @@ export default function Export() {
   const funnel = [
     { label: "Identified", value: prisma.identified, sub: `${prisma.duplicates} duplicate removed` },
     { label: "Screened", value: prisma.screened, sub: `${prisma.excluded} excluded by code` },
-    { label: "Included", value: prisma.included, sub: `${reviewsOnly.length} SR appraised only` },
-    { label: "Extracted", value: extractable.length, sub: `${fieldsVerified}/${fieldsTotal} fields verified` },
+    {
+      label: "Included",
+      value: prisma.included,
+      sub: showOos && reviewsOnly.length ? `${reviewsOnly.length} SR appraised only` : "after dual screening",
+    },
+    { label: "Extracted", value: extractable.length, sub: `${fieldsVerified}/${fieldsTotal} fields resolved` },
     { label: "Synthesised", value: pooled?.studies.length ?? 0, sub: pooled ? `${measure} ${pooled.est.toFixed(2)}` : "—" },
   ];
 
@@ -358,7 +516,7 @@ export default function Export() {
             </Button>
           </div>
           {format === "annex8" ? (
-            <Annex8Table rows={annex8Rows.map((r) => ({ id: r.study.id, cells: r.annex8, ext: r.extensions }))} />
+            <Annex8Table rows={annex8Rows.map((r) => ({ id: r.key, cells: r.annex8, ext: r.extensions }))} />
           ) : (
             <pre
               key={format}
@@ -379,7 +537,7 @@ export default function Export() {
               <DownloadRow
                 icon={FileJson}
                 title="Evidence synthesis package"
-                meta="JSON · PRISMA, fields, meta-analysis, GRADE"
+                meta={showOos ? "JSON · PRISMA, fields, meta-analysis, GRADE" : "JSON · PRISMA, fields, agreement, tags"}
                 onClick={() => download("json")}
               />
               <DownloadRow
@@ -397,7 +555,7 @@ export default function Export() {
               <DownloadRow
                 icon={History}
                 title="Verification audit trail"
-                meta="JSON · every verification action"
+                meta="JSON · every reviewer action"
                 onClick={() => download("audit")}
               />
             </CardContent>
@@ -411,25 +569,25 @@ export default function Export() {
                 "PRISMA 2020 flow counts",
                 "Annex 8 table (8 columns + extensions)",
                 "Ineligibility log (P/I/C/O/S codes)",
-                "Risk-of-bias judgements (RoB 2 · AMSTAR 2)",
-                `${activeIds.size} schema-mapped fields per study`,
+                showOos ? "Risk-of-bias judgements (RoB 2 · AMSTAR 2)" : "Risk-of-bias judgements (RoB 2)",
+                `${activeIds.size} resolved extraction fields per study`,
                 "Source provenance for every value",
-                "Random-effects meta-analysis",
-                "GRADE certainty (analyst-entered)",
+                "Reviewer agreement summary",
+                "Stakeholder tags (rule-based)",
+                "Effect measure per outcome (pre-specified)",
+                `Random-effects meta-analysis (${measure}, primary outcome)`,
+                ...(showOos ? ["GRADE certainty (analyst-entered)"] : []),
               ].map((t) => (
                 <li key={t} className="flex items-center gap-2">
                   <Check className="size-3.5 shrink-0 text-brand-600" strokeWidth={3} /> {t}
                 </li>
               ))}
             </ul>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {(["annex8", "prisma", "consort"] as const)
-                .filter((k) => config.schemas[k])
-                .map((k) => (
-                  <Badge key={k} variant="default">
-                    {k === "annex8" ? "Annex 8" : k.toUpperCase()}
-                  </Badge>
-                ))}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <Badge variant="default">Annex 8 · required output</Badge>
+              {config.schemas.consort && (
+                <span className="text-[11.5px] text-ink-muted">CONSORT items are the tool's reference standard</span>
+              )}
             </div>
           </Card>
 
@@ -446,7 +604,7 @@ function Annex8Table({ rows }: { rows: { id: string; cells: string[]; ext: strin
   return (
     <div className="min-h-0 flex-1 animate-fade-in overflow-auto scrollbar-thin">
       <div className="flex items-center justify-between gap-3 px-5 pt-3 pb-2">
-        <span className="text-[12px] text-ink-muted">One row per extracted study · values after verification</span>
+        <span className="text-[12px] text-ink-muted">One row per extracted study and outcome · resolved values only</span>
         <GuideRef>{GUIDE_REFS.annex8}</GuideRef>
       </div>
       {rows.length === 0 ? (

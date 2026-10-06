@@ -7,9 +7,12 @@ import {
   ChevronDown,
   CircleHelp,
   Database,
+  EyeOff,
   Info,
+  Lock,
   Pencil,
   RotateCcw,
+  Scale,
   Sparkles,
   UserRound,
   Wand2,
@@ -25,11 +28,20 @@ import { Progress } from "@/components/ui/progress";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { PageHeader } from "@/components/PageHeader";
 import { CodeBadge, CodeChips, GUIDE_REFS, GuideRef, codeLabel } from "@/components/guide";
+import { AgreementCard, DualStatusLine, canResolve } from "@/components/dualReview";
+import { PROTOTYPE_CONFIG } from "@/config/prototypeConfig";
 import {
+  RESOLVER_ROLE,
+  ROLE_LABELS,
   SCREENABLE_STUDIES,
+  dualStatus,
+  screeningAgree,
+  screeningConflictKind,
   suggestedExclusion,
   useReview,
   type Decision,
+  type DualRecord,
+  type DualStatus,
   type PrismaCounts,
   type ScreeningDecision,
 } from "@/state/ReviewContext";
@@ -46,7 +58,7 @@ import {
 } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 
-type Filter = "all" | "undecided" | "include" | "maybe" | "exclude";
+type Filter = "all" | "undecided" | "include" | "maybe" | "exclude" | "conflicts";
 type Recommendation = "include" | "review" | "exclude";
 
 function recommendationFor(score: number): Recommendation {
@@ -55,47 +67,81 @@ function recommendationFor(score: number): Recommendation {
   return "exclude";
 }
 
+const DECISION_LABEL: Record<Decision, string> = { include: "Include", maybe: "Maybe", exclude: "Exclude" };
+
+function describeDecision(d: ScreeningDecision) {
+  if (d.decision !== "exclude") return DECISION_LABEL[d.decision];
+  return `Exclude · ${d.code ?? "Other"}`;
+}
+
 export default function Screening() {
   const navigate = useNavigate();
-  const { screening, setDecision, rationales, setRationale, designOf, setDesign, applySuggestedDecisions, prisma } =
-    useReview();
+  const {
+    role,
+    screening,
+    screeningDual,
+    setDecision,
+    resolveScreening,
+    rationales,
+    setRationale,
+    designOf,
+    setDesign,
+    applySuggestedDecisions,
+    prisma,
+    screeningAgreement,
+  } = useReview();
   const [filter, setFilter] = useState<Filter>("all");
   const [codeFilter, setCodeFilter] = useState<IneligibilityCode | null>(null);
 
+  const reviewer = role === "adjudicator" ? null : role;
+  const resolverHere = canResolve(role);
   const rationaleText = (id: string) => rationales[id] ?? SCREENING_RATIONALES[id] ?? "";
 
-  const decide = (id: string, d: Decision | null) => {
-    setDecision(id, d ? { decision: d } : null);
-  };
+  /** Decision shown in the list: the reviewer's own commit, or the final decision for the adjudicator. */
+  const viewDecision = (id: string): ScreeningDecision | undefined =>
+    reviewer ? screeningDual[id]?.[reviewer] : screening[id];
+  const statusOf = (id: string): DualStatus => dualStatus(screeningDual[id], screeningAgree);
 
-  const confirmExclusion = (study: CandidateStudy, code: IneligibilityCode, note: string | undefined, edited: boolean) => {
-    setDecision(study.id, {
-      decision: "exclude",
-      reason: edited ? codeLabel(code) : (study.suggested.reason ?? codeLabel(code)),
-      code,
-      codeNote: code === "Other" ? note : undefined,
-      codeEdited: edited,
-    });
-  };
+  const commit = (id: string, d: ScreeningDecision | null) => setDecision(id, d);
+
+  const buildExclusion = (
+    study: CandidateStudy,
+    code: IneligibilityCode,
+    note: string | undefined,
+    edited: boolean,
+  ): ScreeningDecision => ({
+    decision: "exclude",
+    reason: edited ? codeLabel(code) : (study.suggested.reason ?? codeLabel(code)),
+    code,
+    codeNote: code === "Other" ? note : undefined,
+    codeEdited: edited,
+  });
 
   const editRationale = (id: string, text: string | null) => {
     setRationale(id, text === null || text === SCREENING_RATIONALES[id] ? null : text);
   };
 
-  const counts = {
-    include: prisma.included,
-    exclude: prisma.excluded,
-    maybe: prisma.maybe,
-    undecided: prisma.undecided,
-  };
+  const openConflicts = SCREENABLE_STUDIES.filter((s) => statusOf(s.id) === "conflict").length;
+  const awaiting = SCREENABLE_STUDIES.filter((s) => statusOf(s.id) === "partial").length;
+
+  const viewCounts = { include: 0, exclude: 0, maybe: 0, undecided: 0 };
+  for (const s of SCREENABLE_STUDIES) {
+    const d = viewDecision(s.id);
+    if (!d) viewCounts.undecided++;
+    else viewCounts[d.decision]++;
+  }
 
   const list = SCREENABLE_STUDIES.slice()
     .sort((a, b) => b.relevance - a.relevance)
     .filter((s) => {
-      const d = screening[s.id];
+      const d = viewDecision(s.id);
       if (filter === "all") return true;
+      if (filter === "conflicts") return statusOf(s.id) === "conflict";
       if (filter === "undecided") return !d;
-      if (filter === "exclude" && codeFilter) return d?.decision === "exclude" && (d.code ?? "Other") === codeFilter;
+      if (filter === "exclude" && codeFilter) {
+        const f = screening[s.id];
+        return f?.decision === "exclude" && (f.code ?? "Other") === codeFilter;
+      }
       return d?.decision === filter;
     });
 
@@ -114,14 +160,14 @@ export default function Screening() {
     }
   };
 
-  // Gate: Undecided must be 0 AND at least one study Included
-  const canProceed = counts.undecided === 0 && counts.include > 0;
+  // Gate: every record has a final (agreed or resolved) decision AND at least one is Included
+  const canProceed = prisma.undecided === 0 && prisma.included > 0;
 
   const handleProceed = () => {
     if (!canProceed) return;
-    if (counts.maybe > 0) {
+    if (prisma.maybe > 0) {
       const proceed = window.confirm(
-        `${counts.maybe} ${counts.maybe === 1 ? "study is" : "studies are"} marked Maybe. Resolve them, or continue with Included studies only?`,
+        `${prisma.maybe} ${prisma.maybe === 1 ? "study is" : "studies are"} marked Maybe. Resolve them, or continue with Included studies only?`,
       );
       if (!proceed) return;
     }
@@ -129,17 +175,22 @@ export default function Screening() {
   };
 
   const footerNote = useMemo(() => {
-    if (counts.undecided > 0) {
-      return `Resolve ${counts.undecided} undecided ${counts.undecided === 1 ? "study" : "studies"} to proceed.`;
+    if (openConflicts > 0) {
+      return `${openConflicts} conflict${openConflicts === 1 ? "" : "s"} awaiting ${ROLE_LABELS[RESOLVER_ROLE].toLowerCase()} resolution.`;
     }
-    if (counts.include === 0) {
+    if (prisma.undecided > 0) {
+      return `${prisma.undecided} record${prisma.undecided === 1 ? "" : "s"} still need${prisma.undecided === 1 ? "s" : ""} decisions from both reviewers${awaiting ? ` (${awaiting} awaiting a second reviewer)` : ""}.`;
+    }
+    if (prisma.included === 0) {
       return "Include at least one study to proceed.";
     }
-    if (counts.maybe > 0) {
-      return `${counts.include} studies included (${counts.maybe} marked Maybe). Only Included studies carry forward.`;
+    if (prisma.maybe > 0) {
+      return `${prisma.included} studies included (${prisma.maybe} marked Maybe). Only Included studies carry forward.`;
     }
-    return `${counts.include} studies will proceed to critical appraisal.`;
-  }, [counts]);
+    return `${prisma.included} ${prisma.included === 1 ? "study" : "studies"} will proceed to critical appraisal.`;
+  }, [openConflicts, awaiting, prisma]);
+
+  const mine = reviewer ? "My " : "";
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pt-4 pb-6 lg:h-[calc(100dvh-var(--topbar-h))] lg:pb-4">
@@ -154,20 +205,17 @@ export default function Screening() {
                 <Badge variant="default" className="whitespace-nowrap">
                   <Sparkles /> Ranked by system · analyst decides
                 </Badge>
-                <AboutAutomation text="Records are ranked by embedding similarity to the PICO question. The system suggests a decision, an ineligibility code, and a rationale; the analyst makes and logs every decision." />
+                <AboutAutomation text="Records are ranked by embedding similarity to the PICO question. The system suggests a decision, an ineligibility code, and a rationale; two reviewers decide independently and conflicts are resolved by an adjudicator." />
               </div>
             }
-            description="Candidate records are ranked by embedding similarity to the PICO question and eligibility criteria. Every include or exclude decision is made by the analyst and logged for the PRISMA flow diagram."
+            description="Candidate records are ranked by embedding similarity to the PICO question and eligibility criteria. Two reviewers screen each record independently; agreed or resolved decisions feed the PRISMA flow diagram."
           />
 
-          <div className="mb-2 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-1.5 text-[12px] text-sky-900">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <Info className="size-3.5 shrink-0 text-sky-700" />
-              <span className="truncate">
-                Scope: randomised trials for therapeutic-effect questions (Guide Table 2). Other designs are logged as code S.
-              </span>
+          <div className="mb-2 flex min-w-0 items-start gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-1.5 text-[12px] leading-snug text-sky-900">
+            <Info className="mt-px size-3.5 shrink-0 text-sky-700" />
+            <span>
+              Scope: randomised controlled trials of drugs and vaccines for therapeutic-effect questions (Guide Table 2, p. 18). Other designs are logged as code S.
             </span>
-            <GuideRef className="hidden shrink-0 xl:inline-flex">{GUIDE_REFS.design}</GuideRef>
           </div>
 
           <Card className="mb-3 px-4 py-2.5 min-w-0">
@@ -195,10 +243,11 @@ export default function Screening() {
                 onChange={changeFilter}
                 options={[
                   { value: "all", label: `All ${total}` },
-                  { value: "undecided", label: `Undecided ${counts.undecided}` },
-                  { value: "include", label: `Included ${counts.include}` },
-                  { value: "maybe", label: `Maybe ${counts.maybe}` },
-                  { value: "exclude", label: `Excluded ${counts.exclude}` },
+                  { value: "undecided", label: `${reviewer ? "To do" : "Undecided"} ${viewCounts.undecided}` },
+                  { value: "include", label: `${mine}Included ${viewCounts.include}` },
+                  { value: "maybe", label: `Maybe ${viewCounts.maybe}` },
+                  { value: "exclude", label: `Excluded ${viewCounts.exclude}` },
+                  { value: "conflicts", label: `Conflicts ${openConflicts}` },
                 ]}
               />
             </div>
@@ -212,7 +261,9 @@ export default function Screening() {
                 <X className="size-3" />
               </button>
             ) : (
-              <span className="text-[11.5px] text-ink-muted whitespace-nowrap">Sorted by relevance score</span>
+              <span className="text-[11.5px] text-ink-muted whitespace-nowrap">
+                Viewing as {ROLE_LABELS[role]} · sorted by relevance
+              </span>
             )}
           </div>
 
@@ -221,13 +272,18 @@ export default function Screening() {
               <StudyRow
                 key={s.id}
                 study={s}
-                decision={screening[s.id]}
+                rec={screeningDual[s.id]}
+                status={statusOf(s.id)}
+                decision={viewDecision(s.id)}
+                reviewerMode={!!reviewer}
+                resolverHere={resolverHere}
                 design={designOf(s)}
                 onDesign={(d) => setDesign(s.id, d)}
                 rationale={rationaleText(s.id)}
                 edited={s.id in rationales}
-                onDecide={(d) => decide(s.id, d)}
-                onConfirmExclusion={(code, note, edited) => confirmExclusion(s, code, note, edited)}
+                onCommit={(d) => commit(s.id, d)}
+                onResolve={(d) => resolveScreening(s.id, d)}
+                buildExclusion={(code, note, edited) => buildExclusion(s, code, note, edited)}
                 onEditRationale={(text) => editRationale(s.id, text)}
               />
             ))}
@@ -241,7 +297,9 @@ export default function Screening() {
 
         <div className="col-span-1 lg:col-span-4 min-w-0 lg:min-h-0">
           <div className="flex flex-col gap-3 lg:h-full lg:min-h-0">
-            <PrismaPanel prisma={prisma} activeCode={codeFilter} onCode={filterByCode} />
+            <PrismaPanel prisma={prisma} conflicts={openConflicts} activeCode={codeFilter} onCode={filterByCode} />
+
+            <AgreementCard stage="screening" stats={screeningAgreement} />
 
             {/* Dynamic CTA Block below PRISMA flow */}
             <div className="shrink-0 space-y-2 rounded-xl border border-line bg-white p-3 shadow-2xs">
@@ -250,13 +308,7 @@ export default function Screening() {
                 className="w-full justify-center shadow-xs"
                 disabled={!canProceed}
                 onClick={handleProceed}
-                title={
-                  counts.undecided > 0
-                    ? `Resolve ${counts.undecided} undecided ${counts.undecided === 1 ? "study" : "studies"} to proceed`
-                    : counts.include === 0
-                      ? "Include at least one study to proceed"
-                      : undefined
-                }
+                title={canProceed ? undefined : footerNote}
               >
                 Proceed to appraisal
                 <ArrowRight className="size-4" />
@@ -269,7 +321,7 @@ export default function Screening() {
               <button
                 type="button"
                 onClick={applySuggestedDecisions}
-                title="Demo shortcut: fill remaining with reference decisions"
+                title="Demo shortcut: fills both reviewers' remaining decisions with reference decisions, including a few disagreements to resolve"
                 className="flex w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-dashed border-line px-2 py-1.5 text-[11.5px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700 bg-cream/40"
               >
                 <Wand2 className="size-3.5 shrink-0" />
@@ -297,37 +349,64 @@ const REC_STYLE: Record<Recommendation, { label: string; cls: string }> = {
 
 function StudyRow({
   study,
+  rec,
+  status,
   decision: logged,
+  reviewerMode,
+  resolverHere,
   design,
   onDesign,
   rationale,
   edited,
-  onDecide,
-  onConfirmExclusion,
+  onCommit,
+  onResolve,
+  buildExclusion,
   onEditRationale,
 }: {
   study: CandidateStudy;
+  rec?: DualRecord<ScreeningDecision>;
+  status: DualStatus;
   decision?: ScreeningDecision;
+  reviewerMode: boolean;
+  resolverHere: boolean;
   design: StudyDesign;
   onDesign: (d: StudyDesign) => void;
   rationale: string;
   edited: boolean;
-  onDecide: (d: Decision | null) => void;
-  onConfirmExclusion: (code: IneligibilityCode, note: string | undefined, edited: boolean) => void;
+  onCommit: (d: ScreeningDecision | null) => void;
+  onResolve: (d: ScreeningDecision) => void;
+  buildExclusion: (code: IneligibilityCode, note: string | undefined, edited: boolean) => ScreeningDecision;
   onEditRationale: (text: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [excluding, setExcluding] = useState(false);
-  const decision = logged?.decision;
+  const resolving = resolverHere && (status === "conflict" || status === "resolved");
+  const shown = resolving ? rec?.resolved : logged;
+  const decision = shown?.decision;
+  const committedBoth = !!(rec?.A && rec?.B);
+  const locked = resolving ? false : !reviewerMode || committedBoth;
+  const hidden = PROTOTYPE_CONFIG.hideSuggestionsUntilCommit && reviewerMode && !logged;
   const tone = relevanceTone(study.relevance);
-  const rec = recommendationFor(study.relevance);
-  const disagrees = (rec === "include" && decision === "exclude") || (rec === "exclude" && decision === "include");
+  const rec_ = recommendationFor(study.relevance);
+  const disagrees =
+    !hidden && ((rec_ === "include" && decision === "exclude") || (rec_ === "exclude" && decision === "include"));
   const suggestion = suggestedExclusion(study, design);
   const unsupported = !isSupportedDesign(design);
+  const conflictKind = screeningConflictKind(rec);
+
+  const act = (d: ScreeningDecision | null) => {
+    if (resolving) {
+      if (d) onResolve(d);
+    } else if (!locked) onCommit(d);
+  };
+
+  const lockTitle = !reviewerMode
+    ? `${ROLE_LABELS[RESOLVER_ROLE]} decides only on conflicts`
+    : "Both reviewers have committed; conflicts go to resolution";
 
   const onExcludeClick = () => {
     if (excluding) setExcluding(false);
-    else if (decision === "exclude") onDecide(null);
+    else if (decision === "exclude" && !resolving) act(null);
     else setExcluding(true);
   };
 
@@ -338,30 +417,48 @@ function StudyRow({
         decision === "include" && "border-brand-300 bg-brand-50/40",
         decision === "exclude" && "bg-cream/70 opacity-75 hover:opacity-100",
         decision === "maybe" && "border-flag/40",
+        status === "conflict" && "border-coral/40 opacity-100",
       )}
     >
       <span
         className={cn(
           "absolute inset-y-0 left-0 w-1 transition-colors duration-300",
-          decision === "include" ? "bg-brand-500" : decision === "exclude" ? "bg-coral/60" : decision === "maybe" ? "bg-flag" : "bg-transparent",
+          status === "conflict"
+            ? "bg-coral"
+            : decision === "include"
+              ? "bg-brand-500"
+              : decision === "exclude"
+                ? "bg-coral/60"
+                : decision === "maybe"
+                  ? "bg-flag"
+                  : "bg-transparent",
         )}
       />
       <div className="flex gap-4 sm:gap-5">
         <div className="w-32 min-w-[128px] shrink-0 pt-0.5">
-          <div className={cn("text-[20px] font-semibold leading-none tabular", tone.text)}>
-            {Math.round(study.relevance * 100)}
-          </div>
-          <div className="mt-1 text-[10.5px] text-ink-muted">relevance</div>
-          <Progress value={study.relevance * 100} className="mt-1.5 h-1" barClassName={tone.bar} />
-          <div
-            className={cn(
-              "mt-2.5 rounded-md border px-2 py-1 text-center text-[11px] font-medium leading-tight whitespace-nowrap",
-              REC_STYLE[rec].cls,
-            )}
-            title="Derived from the relevance score — advisory only"
-          >
-            {REC_STYLE[rec].label}
-          </div>
+          {hidden ? (
+            <div className="rounded-md border border-dashed border-line px-2 py-2 text-center text-[11px] leading-snug text-ink-muted">
+              <EyeOff className="mx-auto mb-1 size-3.5" />
+              Score and recommendation hidden until you commit
+            </div>
+          ) : (
+            <>
+              <div className={cn("text-[20px] font-semibold leading-none tabular", tone.text)}>
+                {Math.round(study.relevance * 100)}
+              </div>
+              <div className="mt-1 text-[10.5px] text-ink-muted">relevance</div>
+              <Progress value={study.relevance * 100} className="mt-1.5 h-1" barClassName={tone.bar} />
+              <div
+                className={cn(
+                  "mt-2.5 rounded-md border px-2 py-1 text-center text-[11px] font-medium leading-tight whitespace-nowrap",
+                  REC_STYLE[rec_].cls,
+                )}
+                title="Derived from the relevance score — advisory only"
+              >
+                {REC_STYLE[rec_].label}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="min-w-0 flex-1">
@@ -379,19 +476,21 @@ function StudyRow({
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
             <DesignChip study={study} value={design} onChange={onDesign} />
             <Badge variant="outline">{study.source}</Badge>
-            {decision === "exclude" && logged?.code && (
+            {decision === "exclude" && shown?.code && (
               <span className="flex items-center gap-1 text-[11.5px] text-ink-muted">
-                <CodeBadge code={logged.code} />
+                <CodeBadge code={shown.code} />
                 <span className="max-w-[260px] truncate">
-                  {logged.code === "Other" && logged.codeNote ? logged.codeNote : codeLabel(logged.code)}
+                  {shown.code === "Other" && shown.codeNote ? shown.codeNote : codeLabel(shown.code)}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setExcluding(true)}
-                  className="cursor-pointer text-[11.5px] font-medium text-brand-700 hover:underline"
-                >
-                  Edit code
-                </button>
+                {!locked && (
+                  <button
+                    type="button"
+                    onClick={() => setExcluding(true)}
+                    className="cursor-pointer text-[11.5px] font-medium text-brand-700 hover:underline"
+                  >
+                    Edit code
+                  </button>
+                )}
               </span>
             )}
             <button
@@ -431,14 +530,40 @@ function StudyRow({
             </div>
           )}
 
+          {(rec?.A || rec?.B) && (
+            <div
+              className={cn(
+                "mt-2.5 rounded-md border px-2.5 py-1.5",
+                status === "conflict" ? "border-coral/35 bg-coral-soft/30" : "border-line bg-cream/50",
+              )}
+            >
+              <DualStatusLine rec={rec} status={status} describe={describeDecision} codeMismatch={conflictKind === "code"} />
+              {resolving && status === "conflict" && rec?.A && rec?.B && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+                  <span className="flex items-center gap-1 font-medium text-[#991b1b]">
+                    <Scale className="size-3.5" />
+                    {conflictKind === "code" ? "Resolve code mismatch:" : "Resolve conflict:"}
+                  </span>
+                  <Button size="xs" variant="outline" onClick={() => onResolve(stripStamp(rec.A!))}>
+                    Use Reviewer A · {describeDecision(rec.A)}
+                  </Button>
+                  <Button size="xs" variant="outline" onClick={() => onResolve(stripStamp(rec.B!))}>
+                    Use Reviewer B · {describeDecision(rec.B)}
+                  </Button>
+                  <span className="text-ink-muted">or decide with the buttons</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {excluding && (
             <ExclusionPanel
-              key={`${design}-${logged?.code ?? ""}`}
-              suggestion={suggestion}
-              current={decision === "exclude" ? logged : undefined}
+              key={`${design}-${shown?.code ?? ""}`}
+              suggestion={hidden ? {} : suggestion}
+              current={decision === "exclude" ? shown : undefined}
               onCancel={() => setExcluding(false)}
               onConfirm={(code, note, wasEdited) => {
-                onConfirmExclusion(code, note, wasEdited);
+                act(buildExclusion(code, note, wasEdited));
                 setExcluding(false);
               }}
             />
@@ -447,6 +572,7 @@ function StudyRow({
           <RationaleBox
             text={rationale}
             edited={edited}
+            hidden={hidden && !edited}
             logged={!!decision}
             onSave={(t) => onEditRationale(t)}
             onRevert={() => onEditRationale(null)}
@@ -462,49 +588,70 @@ function StudyRow({
         </div>
 
         <div className="flex shrink-0 flex-col gap-1.5">
+          {resolving && (
+            <span className="text-center text-[10.5px] font-medium text-[#991b1b]">Final decision</span>
+          )}
           <DecisionButton
             active={decision === "include"}
+            disabled={locked}
+            title={locked ? lockTitle : undefined}
             tone="include"
             onClick={() => {
               setExcluding(false);
-              onDecide(decision === "include" ? null : "include");
+              act(decision === "include" && !resolving ? null : { decision: "include" });
             }}
           >
             <Check /> Include
           </DecisionButton>
           <DecisionButton
             active={decision === "maybe"}
+            disabled={locked}
+            title={locked ? lockTitle : undefined}
             tone="maybe"
             onClick={() => {
               setExcluding(false);
-              onDecide(decision === "maybe" ? null : "maybe");
+              act(decision === "maybe" && !resolving ? null : { decision: "maybe" });
             }}
           >
             <CircleHelp /> Maybe
           </DecisionButton>
           <DecisionButton
             active={decision === "exclude"}
+            disabled={locked}
+            title={locked ? lockTitle : undefined}
             pending={excluding && decision !== "exclude"}
             tone="exclude"
             onClick={onExcludeClick}
           >
             <X /> Exclude
           </DecisionButton>
+          {locked && reviewerMode && (
+            <span className="flex items-center justify-center gap-1 text-[10.5px] text-ink-muted" title={lockTitle}>
+              <Lock className="size-3" /> Committed
+            </span>
+          )}
         </div>
       </div>
     </Card>
   );
 }
 
+function stripStamp(d: ScreeningDecision & { at?: string }): ScreeningDecision {
+  const { decision, reason, code, codeNote, codeEdited } = d;
+  return { decision, reason, code, codeNote, codeEdited };
+}
+
 function RationaleBox({
   text,
   edited,
+  hidden,
   logged,
   onSave,
   onRevert,
 }: {
   text: string;
   edited: boolean;
+  hidden?: boolean;
   logged: boolean;
   onSave: (t: string) => void;
   onRevert: () => void;
@@ -513,9 +660,26 @@ function RationaleBox({
   const [draft, setDraft] = useState(text);
 
   const start = () => {
-    setDraft(text);
+    setDraft(hidden ? "" : text);
     setEditing(true);
   };
+
+  if (hidden && !editing) {
+    return (
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-line px-3.5 py-2 text-[12px] text-ink-muted">
+        <span className="flex items-center gap-1.5">
+          <EyeOff className="size-3.5 shrink-0" /> System-suggested rationale hidden until you commit
+        </span>
+        <button
+          type="button"
+          onClick={start}
+          className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] font-medium text-brand-700 hover:bg-cream"
+        >
+          <Pencil className="size-3" /> Write rationale
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -536,7 +700,7 @@ function RationaleBox({
               <Sparkles /> System-suggested
             </Badge>
           )}
-          {logged && <span className="text-[11px] text-ink-muted">· logged as reason</span>}
+          {logged && <span className="text-[11px] text-ink-muted">Â· logged as reason</span>}
         </div>
         {!editing && (
           <div className="flex items-center gap-1">
@@ -577,7 +741,7 @@ function RationaleBox({
             className="min-h-[64px] bg-white text-[13px]"
           />
           <div className="mt-1.5 flex items-center justify-end gap-1.5">
-            <span className="mr-auto text-[11px] text-ink-muted">Ctrl + Enter to save · Esc to cancel</span>
+            <span className="mr-auto text-[11px] text-ink-muted">Ctrl + Enter to save Â· Esc to cancel</span>
             <Button size="xs" variant="ghost" onClick={() => setEditing(false)}>
               Cancel
             </Button>
@@ -613,18 +777,18 @@ function DesignChip({
   const changed = value !== study.design;
   return (
     <label
-      title={`${GUIDE_REFS.design}${study.designDetail ? ` · imported as ${study.designDetail}` : ""}${changed ? ` · imported as ${study.design}` : ""}`}
+      title={`${GUIDE_REFS.design}${study.designDetail ? ` Â· imported as ${study.designDetail}` : ""}${changed ? ` Â· imported as ${study.design}` : ""}`}
       className={cn(
         "relative inline-flex cursor-pointer items-center gap-1 rounded-full border py-0.5 pr-1.5 pl-2 text-[11.5px] font-medium leading-4",
         value === "RCT"
           ? "border-brand-200 bg-brand-50 text-brand-800"
-          : value === "Systematic review"
+          : isSupportedDesign(value)
             ? "border-sky-200 bg-sky-50 text-sky-800"
             : "border-flag/35 bg-flag-soft text-[#854408]",
       )}
     >
       <span className="text-[10.5px] font-normal opacity-70">Design</span>
-      <span>{value === "Other" && study.designDetail && !changed ? `Other · ${study.designDetail}` : value}</span>
+      <span>{value === "Other" && study.designDetail && !changed ? `Other Â· ${study.designDetail}` : value}</span>
       {changed && <UserRound className="size-3" />}
       <ChevronDown className="size-3 opacity-60" />
       <select
@@ -707,12 +871,16 @@ function ExclusionPanel({
 function DecisionButton({
   active,
   pending,
+  disabled,
+  title,
   tone,
   onClick,
   children,
 }: {
   active: boolean;
   pending?: boolean;
+  disabled?: boolean;
+  title?: string;
   tone: "include" | "maybe" | "exclude";
   onClick: () => void;
   children: React.ReactNode;
@@ -731,8 +899,11 @@ function DecisionButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className={cn(
-        "flex h-7 w-[92px] shrink-0 whitespace-nowrap cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-all active:scale-95 [&_svg]:size-3.5",
+        "flex h-7 w-[92px] shrink-0 whitespace-nowrap cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-all active:scale-95 disabled:cursor-not-allowed disabled:active:scale-100 [&_svg]:size-3.5",
+        disabled && !active && "opacity-45",
         active
           ? activeCls
           : pending
@@ -747,10 +918,12 @@ function DecisionButton({
 
 function PrismaPanel({
   prisma,
+  conflicts,
   activeCode,
   onCode,
 }: {
   prisma: PrismaCounts;
+  conflicts: number;
   activeCode: IneligibilityCode | null;
   onCode: (c: IneligibilityCode) => void;
 }) {
@@ -792,7 +965,7 @@ function PrismaPanel({
                     type="button"
                     disabled={n === 0}
                     onClick={() => onCode(code)}
-                    title={`${label}: ${n} excluded · click to filter the list`}
+                    title={`${label}: ${n} excluded Â· click to filter the list`}
                     className={cn(
                       "inline-flex cursor-pointer items-center gap-1 rounded border px-1.5 font-mono text-[10.5px] leading-[18px] transition-colors disabled:cursor-default disabled:opacity-45",
                       on
@@ -807,7 +980,7 @@ function PrismaPanel({
               })}
             </div>
             <GuideRef className="mt-1" title={GUIDE_REFS.prisma}>
-              Reasons per PRISMA flow · Guide p. 21
+              Reasons per PRISMA flow Â· Guide p. 21
             </GuideRef>
           </div>
         </div>
@@ -822,7 +995,7 @@ function PrismaPanel({
           {maybe > 0 && (
             <div className="px-3 pb-2">
               <span className="inline-flex rounded border border-flag/30 bg-flag-soft/60 px-1.5 py-0.5 text-[11px] font-medium text-[#854408]">
-                {maybe} marked “Maybe” · flagged for full-text
+                {maybe} marked â€œMaybeâ€ Â· flagged for full-text
               </span>
             </div>
           )}
@@ -839,7 +1012,7 @@ function PrismaPanel({
         <Progress value={(decided / screened) * 100} className="h-1.5" />
         <div
           className="mt-1 truncate text-[10.5px] tabular text-ink-muted"
-          title="Excluded + Included + Maybe + Undecided = Screened"
+          title={`Excluded + Included + Maybe + Undecided = Screened. Undecided counts records without an agreed or resolved decision${conflicts ? ` (${conflicts} in conflict)` : ""}.`}
         >
           {excluded} excl. + {included} incl. + {maybe} maybe + {undecided} undecided = {screened} screened
         </div>

@@ -5,6 +5,7 @@ import { useReview } from "@/state/ReviewContext";
 import { ACTIVE_REVIEW_ID } from "@/data/mockData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RoleSwitcher } from "@/components/dualReview";
 import { STAGES } from "./stages";
 
 export function TopBar() {
@@ -61,18 +62,21 @@ export function TopBar() {
             {!inReview && <PrototypeBadge />}
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 whitespace-nowrap px-2.5 text-xs text-ink-muted hover:text-ink"
-            onClick={() => {
-              if (confirm("Reset all demo progress? Screening, appraisal and verification decisions will be cleared.")) reset();
-            }}
-            title="Reset demo state"
-          >
-            <RotateCcw className="size-3.5" />
-            Reset demo
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {inReview && <RoleSwitcher />}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 whitespace-nowrap px-2.5 text-xs text-ink-muted hover:text-ink"
+              onClick={() => {
+                if (confirm("Reset all demo progress? Reviewer decisions, resolutions, appraisal and configuration changes will be cleared.")) reset();
+              }}
+              title="Reset demo state"
+            >
+              <RotateCcw className="size-3.5" />
+              Reset demo
+            </Button>
+          </div>
         </div>
 
         {/* Row 2: Review title alongside stage stepper */}

@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { PageContainer, PageHeader, StageFooter } from "@/components/PageHeader";
 import { GUIDE_REFS, GuideRef } from "@/components/guide";
+import { PROTOTYPE_CONFIG } from "@/config/prototypeConfig";
 import { ROB_OPTS, RobTrafficLight } from "@/components/RobTrafficLight";
 import {
   appraisalItemCount,
@@ -80,7 +81,11 @@ export default function Appraisal() {
             <UserRound /> Human review required
           </Badge>
         }
-        description="Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials. AMSTAR 2 applies to records tagged as systematic reviews (Guide Annex 7)."
+        description={
+          PROTOTYPE_CONFIG.showOutOfScopeMocks
+            ? "Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials. AMSTAR 2 applies to records tagged as systematic reviews (Guide Annex 7)."
+            : "Risk of bias is assessed by the analyst using Cochrane RoB 2 for randomised trials. This is a human-only step."
+        }
       />
 
       <div className="mb-5 flex items-center gap-3 rounded-lg border border-flag/35 bg-flag-soft/70 px-3.5 py-1.5">
@@ -161,7 +166,7 @@ export default function Appraisal() {
                           ? "Systematic review · appraised only (not extracted or pooled)"
                           : "Outcome: primary composite endpoint"}
                       </span>
-                      <GuideRef>{GUIDE_REFS.appraisal}</GuideRef>
+                      {PROTOTYPE_CONFIG.showOutOfScopeMocks && <GuideRef>{GUIDE_REFS.appraisal}</GuideRef>}
                     </div>
                     <CardTitle className="mt-2 text-[16px]">{selected.title}</CardTitle>
                     <CardDescription className="mt-1">

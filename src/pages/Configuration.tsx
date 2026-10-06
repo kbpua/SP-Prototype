@@ -10,13 +10,21 @@ import { CodeMenu, GUIDE_REFS, GuideRef } from "@/components/guide";
 import { useReview, type ReviewConfig } from "@/state/ReviewContext";
 import { SCHEMA_DESCRIPTIONS, SCHEMA_LABELS, type IneligibilityCode, type SchemaKey } from "@/data/mockData";
 import type { EffectMeasure } from "@/lib/meta";
+import { MEASURE_NAMES, OUTCOME_TYPES, isValidMeasure, type OutcomeType } from "@/lib/effectMeasures";
+import { STAKEHOLDER_CATEGORIES } from "@/config/stakeholderCategories";
 import { cn } from "@/lib/utils";
 
 const PICO: { key: keyof ReviewConfig; letter: string; label: string; placeholder: string; helper?: string }[] = [
   { key: "population", letter: "P", label: "Population", placeholder: "Who are the patients?" },
   { key: "intervention", letter: "I", label: "Intervention", placeholder: "Health technology being assessed" },
   { key: "comparator", letter: "C", label: "Comparator", placeholder: "Current standard of care, placebo…" },
-  { key: "outcome", letter: "O", label: "Outcomes", placeholder: "Critical and important outcomes" },
+  {
+    key: "outcome",
+    letter: "O",
+    label: "Outcomes",
+    placeholder: "Critical and important outcomes",
+    helper: "Separate outcomes with semicolons; each gets its own effect measure.",
+  },
   {
     key: "studyDesign",
     letter: "S",
@@ -29,12 +37,109 @@ const PICO: { key: keyof ReviewConfig; letter: string; label: string; placeholde
 /** Criteria the Guide asks to justify: language restrictions and excluding grey literature. */
 const needsJustification = (item: string) => /language|conference abstract/i.test(item);
 
-const MEASURES: { value: EffectMeasure; label: string; desc: string }[] = [
-  { value: "RR", label: "Risk ratio", desc: "Dichotomous outcomes" },
-  { value: "OR", label: "Odds ratio", desc: "Dichotomous outcomes" },
-  { value: "HR", label: "Hazard ratio", desc: "Time-to-event outcomes" },
-  { value: "MD", label: "Mean difference", desc: "Continuous outcomes" },
-];
+const MEASURE_CARDS: EffectMeasure[] = ["RR", "OR", "HR", "MD"];
+
+const POST_HOC_CONFIRM =
+  "Changing the effect measure after extraction has started will be logged in the audit trail. Continue?";
+
+function EffectMeasureCard() {
+  const { effectMeasures, extractionStarted, setOutcomeMeasure } = useReview();
+  const change = (outcomeId: string, patch: { type?: OutcomeType; measure?: EffectMeasure }) => {
+    if (extractionStarted && !window.confirm(POST_HOC_CONFIRM)) return;
+    setOutcomeMeasure(outcomeId, patch);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Target effect measure</CardTitle>
+        <CardDescription>Pre-specified per outcome. Changes after extraction are logged in the audit trail.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {effectMeasures.length === 0 && (
+          <p className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-[12.5px] text-ink-muted">
+            List outcomes in the review question (separated by semicolons) to set their effect measures.
+          </p>
+        )}
+        {effectMeasures.map((o) => (
+          <div
+            key={o.outcomeId}
+            className={cn("rounded-lg border p-3", o.isPrimary ? "border-brand-300 bg-brand-50/40" : "border-line")}
+          >
+            <div className="flex items-start gap-2.5">
+              <input
+                type="radio"
+                name="primary-outcome"
+                aria-label={`Primary outcome: ${o.outcomeName}`}
+                checked={o.isPrimary}
+                onChange={() => setOutcomeMeasure(o.outcomeId, { isPrimary: true })}
+                className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#0f6e56]"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="text-[13px] font-medium leading-snug text-ink">{o.outcomeName}</span>
+                  {o.isPrimary && <Badge variant="solid">Primary</Badge>}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Label htmlFor={`type-${o.outcomeId}`} className="text-[12px] text-ink-muted">
+                    Outcome type
+                  </Label>
+                  <select
+                    id={`type-${o.outcomeId}`}
+                    value={o.type}
+                    onChange={(e) => change(o.outcomeId, { type: e.target.value as OutcomeType })}
+                    className="h-8 cursor-pointer rounded-md border border-line bg-white px-2 text-[12.5px] text-ink focus:border-brand-400 focus:outline-none"
+                  >
+                    {OUTCOME_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-2 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label={`Effect measure: ${o.outcomeName}`}>
+                  {MEASURE_CARDS.map((m) => {
+                    const valid = isValidMeasure(o.type, m);
+                    const on = o.measure === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        aria-disabled={!valid}
+                        title={valid ? MEASURE_NAMES[m] : "Not valid for this outcome type"}
+                        onClick={() => valid && !on && change(o.outcomeId, { measure: m })}
+                        className={cn(
+                          "rounded-md border px-2 py-1.5 text-left transition-all",
+                          !valid && "cursor-not-allowed opacity-40",
+                          valid && !on && "cursor-pointer border-line bg-white hover:bg-cream",
+                          on && "border-brand-500 bg-brand-50 ring-2 ring-brand-500/15",
+                        )}
+                      >
+                        <div className={cn("text-[14px] font-semibold", on ? "text-brand-700" : "text-ink")}>{m}</div>
+                        <div className="text-[10.5px] leading-tight text-ink-muted">{MEASURE_NAMES[m]}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {o.measureSource !== "analyst" && (
+                  <div className="mt-1.5 text-[11px] text-ink-muted">Suggested from outcome type</div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        {effectMeasures.some((o) => o.type === "time-to-event") && (
+          <p className="text-[11.5px] leading-snug text-ink-muted">
+            Time-to-event outcomes are pooled from the log hazard ratio; a crude risk ratio is never pooled for them.
+          </p>
+        )}
+        <GuideRef>Guide p. 15 · Relative effect size with confidence interval</GuideRef>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Configuration() {
   const navigate = useNavigate();
@@ -54,7 +159,7 @@ export default function Configuration() {
             <CardHeader>
               <CardTitle>Review question</CardTitle>
               <CardDescription>
-                Structured as PICO for inclusion criteria (Annex 6), with study design as an additional criterion.
+                Structured as PICO for inclusion criteria (Annex 6, p. 73); the policy question uses PICOT (p. 14).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -169,34 +274,67 @@ export default function Configuration() {
             </CardContent>
           </Card>
 
+          <EffectMeasureCard />
+
           <Card>
             <CardHeader>
-              <CardTitle>Target effect measure</CardTitle>
-              <CardDescription>Used as the default in synthesis. Can be changed later.</CardDescription>
+              <CardTitle>Stakeholder priority categories</CardTitle>
+              <CardDescription>
+                Analyst-selected categories used as tagging criteria for extracted outcome and population fields.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-2.5">
-              {MEASURES.map((m) => {
-                const on = config.effectMeasure === m.value;
+            <CardContent className="space-y-2">
+              {STAKEHOLDER_CATEGORIES.map((c) => {
+                const on = config.stakeholderCategories.includes(c.id);
                 return (
                   <button
-                    key={m.value}
+                    key={c.id}
                     type="button"
-                    onClick={() => updateConfig({ effectMeasure: m.value })}
+                    aria-pressed={on}
+                    onClick={() =>
+                      updateConfig({
+                        stakeholderCategories: on
+                          ? config.stakeholderCategories.filter((x) => x !== c.id)
+                          : [...config.stakeholderCategories, c.id],
+                      })
+                    }
                     className={cn(
-                      "cursor-pointer rounded-lg border p-3 text-left transition-all",
-                      on ? "border-brand-500 bg-brand-50 ring-2 ring-brand-500/15" : "border-line hover:bg-cream",
+                      "flex w-full cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-all",
+                      on ? "border-brand-300 bg-brand-50/60" : "border-line bg-white hover:bg-cream",
                     )}
                   >
-                    <div className="flex items-baseline gap-2">
-                      <span className={cn("text-[17px] font-semibold", on ? "text-brand-700" : "text-ink")}>
-                        {m.value}
+                    <span
+                      className={cn(
+                        "mt-0.5 grid size-4 shrink-0 place-items-center rounded border transition-colors",
+                        on ? "border-brand-600 bg-brand-600 text-white" : "border-line bg-white",
+                      )}
+                    >
+                      {on && <Check className="size-3" strokeWidth={3} />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-x-2">
+                        <span className="text-[13px] font-medium text-ink">{c.name}</span>
+                        <Badge variant={c.mappable === "Yes" ? "default" : "slate"} className="text-[10.5px]">
+                          {c.mappable === "Yes" ? `Maps to ${c.mappableNote}` : "Rarely maps to RCT data"}
+                        </Badge>
                       </span>
-                      <span className="text-[12.5px] text-ink-soft">{m.label}</span>
-                    </div>
-                    <div className="mt-0.5 text-[11.5px] text-ink-muted">{m.desc}</div>
+                      <span className="block text-[11.5px] text-ink-muted">{c.themes.join(", ")}</span>
+                      {on && c.mappable === "Rarely" && (
+                        <span className="mt-0.5 block text-[11.5px] text-[#854408]">
+                          Few RCT outcomes map to this category; tags may be sparse.
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
+              <p className="pt-1 text-[11.5px] leading-snug text-ink-muted">
+                This prototype does not perform ELSI assessment. It uses analyst-selected categories as tagging criteria.
+              </p>
+              <p className="text-[11px] leading-snug text-[#854408]">
+                Placeholder list (unverified): category names and themes must be checked against the 2022 Philippine
+                Social Values guidelines.
+              </p>
             </CardContent>
           </Card>
 
@@ -305,7 +443,7 @@ function CriteriaBuilder({
                 <button
                   type="button"
                   onClick={() => openJustify(it)}
-                  title={justified ? `Justification: ${justifications[it]}` : "Guide p. 16 · Search strategy"}
+                  title={justified ? `Justification: ${justifications[it]}` : GUIDE_REFS.searchDetail}
                   className={cn(
                     "ml-0.5 shrink-0 cursor-pointer whitespace-nowrap text-[11px] font-medium underline-offset-2 hover:underline",
                     justified ? "text-brand-700" : "text-[#b45309]",
@@ -330,7 +468,9 @@ function CriteriaBuilder({
         <div className="mt-2 animate-fade-in rounded-lg border border-flag/35 bg-flag-soft/40 p-2">
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="truncate text-[11.5px] font-medium text-[#854408]">Justification · {justifying}</span>
-            <GuideRef className="shrink-0">{GUIDE_REFS.search}</GuideRef>
+            <GuideRef className="shrink-0" title={GUIDE_REFS.searchDetail}>
+              Guide p. 16; Table 5, p. 22
+            </GuideRef>
           </div>
           <div className="flex gap-1.5">
             <Input

@@ -9,7 +9,10 @@ export interface StudyInput {
   nC: number;
   eC: number;
   hr?: { est: number; lo: number; hi: number };
+  md?: { meanT: number; sdT: number; meanC: number; sdC: number };
 }
+
+export const isRatioMeasure = (m: EffectMeasure) => m !== "MD";
 
 export interface StudyEffect {
   id: string;
@@ -44,6 +47,11 @@ function effectFor(measure: EffectMeasure, s: StudyInput): { yi: number; vi: num
     if (!s.hr || s.hr.lo <= 0 || s.hr.hi <= 0 || s.hr.est <= 0) return null;
     const se = (Math.log(s.hr.hi) - Math.log(s.hr.lo)) / (2 * Z);
     return { yi: Math.log(s.hr.est), vi: se * se };
+  }
+  if (measure === "MD") {
+    const m = s.md;
+    if (!m || !(s.nT > 0) || !(s.nC > 0) || ![m.meanT, m.sdT, m.meanC, m.sdC].every(Number.isFinite)) return null;
+    return { yi: m.meanT - m.meanC, vi: (m.sdT * m.sdT) / s.nT + (m.sdC * m.sdC) / s.nC };
   }
   let { eT, nT, eC, nC } = s;
   if (![eT, nT, eC, nC].every((v) => Number.isFinite(v) && v >= 0) || nT === 0 || nC === 0) return null;
@@ -83,6 +91,7 @@ export function dersimonianLaird(measure: EffectMeasure, inputs: StudyInput[]): 
   const pooled = rows.reduce((acc, r, i) => acc + wr[i] * r.e.yi, 0) / swr;
   const se = Math.sqrt(1 / swr);
   const z = pooled / se;
+  const back = isRatioMeasure(measure) ? Math.exp : (v: number) => v;
 
   return {
     studies: rows.map((r, i) => {
@@ -93,15 +102,15 @@ export function dersimonianLaird(measure: EffectMeasure, inputs: StudyInput[]): 
         year: r.s.year,
         yi: r.e.yi,
         vi: r.e.vi,
-        est: Math.exp(r.e.yi),
-        lo: Math.exp(r.e.yi - Z * s),
-        hi: Math.exp(r.e.yi + Z * s),
+        est: back(r.e.yi),
+        lo: back(r.e.yi - Z * s),
+        hi: back(r.e.yi + Z * s),
         weight: (wr[i] / swr) * 100,
       };
     }),
-    est: Math.exp(pooled),
-    lo: Math.exp(pooled - Z * se),
-    hi: Math.exp(pooled + Z * se),
+    est: back(pooled),
+    lo: back(pooled - Z * se),
+    hi: back(pooled + Z * se),
     z,
     p: 2 * (1 - normalCdf(Math.abs(z))),
     q,

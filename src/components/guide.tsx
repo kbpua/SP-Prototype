@@ -12,6 +12,8 @@ export const GUIDE_REFS = {
   conformance: "Guide Table 4, pp. 20–21 · Minimum requirements",
   grade: "Guide p. 21 · Quality of evidence",
   search: "Guide p. 16 · Search strategy",
+  searchDetail: "Guide p. 16; Table 5, p. 22 · Avoid language restrictions unless justified; search grey literature",
+  independent: "Guide Tables 4–5, pp. 20–22 · Independent review",
 } as const;
 
 /** Small muted caption pointing to the Methods Guide page a feature is aligned to. */

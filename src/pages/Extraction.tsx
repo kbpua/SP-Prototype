@@ -5,15 +5,19 @@ import {
   ArrowRight,
   Check,
   CheckCheck,
+  EyeOff,
   FileText,
-  Info,
   Keyboard,
   Loader2,
+  Lock,
   Pencil,
   Scale,
   ScanText,
+  Tag,
+  Trash2,
   Undo2,
   UserRound,
+  Wand2,
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -26,11 +30,22 @@ import { Segmented } from "@/components/ui/segmented";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { PageHeader, StageFooter } from "@/components/PageHeader";
 import { HighlightContext, MockDocument, type HighlightInfo } from "@/components/extraction/MockDocument";
+import { AgreementCard, DualStatusLine, canResolve } from "@/components/dualReview";
+import { PROTOTYPE_CONFIG } from "@/config/prototypeConfig";
 import {
+  ROLE_LABELS,
+  RESOLVER_ROLE,
   activeFieldIds,
+  dualStatus,
+  fieldAgree,
   finalFieldValue,
+  tagAgree,
   useReview,
+  type DualRecord,
+  type DualStatus,
   type FieldVerification,
+  type TagDecision,
+  type TagItem,
 } from "@/state/ReviewContext";
 import {
   FIELD_GROUPS,
@@ -42,7 +57,6 @@ import {
   type FieldId,
   type SchemaKey,
 } from "@/data/mockData";
-import { reviewsOnlyNote } from "@/lib/review";
 import { cn } from "@/lib/utils";
 
 const processedDocs = new Set<string>();
@@ -54,7 +68,7 @@ const PIPELINE_STEPS = [
   "Scoring confidence and linking source spans",
 ];
 
-type FieldFilter = "all" | "attention" | "pending";
+type FieldFilter = "all" | "attention" | "pending" | "conflicts";
 
 function confidenceScore(id: string, c: Confidence) {
   let h = 0;
@@ -63,9 +77,45 @@ function confidenceScore(id: string, c: Confidence) {
   return Math.min(0.99, base + (h % 9) / 100);
 }
 
+const FIELD_STATUS_LABEL: Record<string, string> = {
+  accepted: "Accepted",
+  corrected: "Corrected",
+  rejected: "Rejected",
+  adjudicate: "Flagged for adjudication",
+};
+
+const describeField = (v: FieldVerification) =>
+  v.status === "corrected" ? `Corrected → ${v.value}` : (FIELD_STATUS_LABEL[v.status] ?? v.status);
+
+const TAG_STATUS_LABEL: Record<string, string> = { accepted: "Accepted", corrected: "Corrected", removed: "Removed" };
+const describeTag = (v: TagDecision) =>
+  v.status === "corrected" ? `Corrected → ${v.value}` : (TAG_STATUS_LABEL[v.status] ?? v.status);
+
+const strip = <T extends object>(v: T & { at?: string; resolver?: string }): T => {
+  const { at: _at, resolver: _r, ...rest } = v;
+  return rest as unknown as T;
+};
+
 export default function Extraction() {
   const navigate = useNavigate();
-  const { extractable, included, reviewsOnly, verification, setField, acceptHighConfidence, config } = useReview();
+  const {
+    role,
+    extractable,
+    included,
+    verification,
+    fieldDual,
+    tagDual,
+    tags,
+    setField,
+    resolveField,
+    setTag,
+    resolveTag,
+    acceptHighConfidence,
+    applyReferenceExtraction,
+    extractionAgreement,
+    config,
+    effectMeasures,
+  } = useReview();
   const [docId, setDocId] = useState<string | undefined>(extractable[0]?.id);
   const [active, setActive] = useState<FieldId | undefined>();
   const [hovered, setHovered] = useState<FieldId | undefined>();
@@ -73,12 +123,15 @@ export default function Extraction() {
   const [editing, setEditing] = useState<FieldId | undefined>();
   const [phase, setPhase] = useState(PIPELINE_STEPS.length);
 
+  const reviewer = role === "adjudicator" ? null : role;
+  const resolverHere = canResolve(role);
+
   const docPaneRef = useRef<HTMLDivElement>(null);
   const fieldPaneRef = useRef<HTMLDivElement>(null);
   const spanRefs = useRef(new Map<FieldId, HTMLElement>());
   const rowRefs = useRef(new Map<FieldId, HTMLDivElement>());
 
-  const activeIds = useMemo(() => activeFieldIds(config.schemas), [config.schemas]);
+  const activeIds = useMemo(() => activeFieldIds(config.schemas, effectMeasures), [config.schemas, effectMeasures]);
   const enabledSchemas = (Object.keys(config.schemas) as SchemaKey[]).filter((k) => config.schemas[k]);
 
   useEffect(() => {
@@ -111,31 +164,47 @@ export default function Extraction() {
     () => (doc?.trial ? getExtractedFields(doc.trial).filter((f) => activeIds.has(f.def.id)) : []),
     [doc, activeIds],
   );
-  const docVerification = (doc && verification[doc.id]) ?? {};
-  const statusOf = (id: FieldId) => docVerification[id]?.status ?? "pending";
+  const recOf = (id: FieldId) => (doc ? fieldDual[doc.id]?.[id] : undefined);
+  const dualOf = (id: FieldId): DualStatus => dualStatus(recOf(id), fieldAgree);
+  /** What the current role sees as the field decision: own commit, or the final value for the adjudicator. */
+  const viewOf = (id: FieldId): FieldVerification | undefined =>
+    reviewer ? recOf(id)?.[reviewer] : doc ? verification[doc.id]?.[id] : undefined;
+  const statusOf = (id: FieldId) => viewOf(id)?.status ?? "pending";
+
+  const docTags = tags.filter((t) => t.studyId === doc?.id);
+  const tagFor = (id: FieldId) => docTags.find((t) => t.fieldId === id);
 
   const docStats = (s: CandidateStudy) => {
     const v = verification[s.id] ?? {};
-    const total = activeIds.size;
-    const done = [...activeIds].filter((id) => (v[id]?.status ?? "pending") !== "pending").length;
+    const t = tags.filter((x) => x.studyId === s.id);
+    const total = activeIds.size + t.length;
+    const done = [...activeIds].filter((id) => v[id]).length + t.filter((x) => x.final).length;
     return { total, done };
   };
 
-  const resolved = fields.filter((f) => statusOf(f.def.id) !== "pending").length;
-  const batchAccepted = fields.filter((f) => docVerification[f.def.id]?.batch && statusOf(f.def.id) === "accepted").length;
+  const committed = fields.filter((f) => statusOf(f.def.id) !== "pending").length;
+  const batchAccepted = fields.filter((f) => viewOf(f.def.id)?.batch && statusOf(f.def.id) === "accepted").length;
+  const conflictIds = fields.filter((f) => dualOf(f.def.id) === "conflict").map((f) => f.def.id);
+  const tagConflicts = docTags.filter((t) => t.status === "conflict").map((t) => t.fieldId);
+  const conflictSet = new Set([...conflictIds, ...tagConflicts]);
   const attention = fields.filter((f) => f.confidence !== "high" && statusOf(f.def.id) === "pending").length;
-  const highPending = fields.filter((f) => f.confidence === "high" && statusOf(f.def.id) === "pending").length;
+  const highPending = reviewer
+    ? fields.filter((f) => f.confidence === "high" && statusOf(f.def.id) === "pending").length
+    : 0;
 
   const visibleFields = fields.filter((f) => {
     if (filter === "attention") return f.confidence !== "high" || statusOf(f.def.id) === "adjudicate";
     if (filter === "pending") return statusOf(f.def.id) === "pending";
+    if (filter === "conflicts") return conflictSet.has(f.def.id);
     return true;
   });
 
-  const allDocsDone = extractable.length > 0 && extractable.every((s) => {
-    const st = docStats(s);
-    return st.done >= st.total;
-  });
+  const allDocsDone =
+    extractable.length > 0 &&
+    extractable.every((s) => {
+      const st = docStats(s);
+      return st.done >= st.total;
+    });
   const remainingTotal = extractable.reduce((acc, s) => {
     const st = docStats(s);
     return acc + (st.total - st.done);
@@ -168,20 +237,39 @@ export default function Extraction() {
       info[f.def.id] = {
         label: f.def.label,
         confidence: f.confidence,
-        status: docVerification[f.def.id]?.status ?? "pending",
+        status: statusOf(f.def.id),
       };
     }
     return info;
-  }, [fields, docVerification]);
+  }, [fields, fieldDual, verification, reviewer, doc]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Resolution applies on conflicts for the resolver role; otherwise the reviewer's own commit. */
+  const isResolving = (id: FieldId) => resolverHere && (dualOf(id) === "conflict" || dualOf(id) === "resolved");
+  const isLocked = (id: FieldId) => {
+    if (isResolving(id)) return false;
+    const rec = recOf(id);
+    return !reviewer || !!(rec?.A && rec?.B);
+  };
 
   const act = useCallback(
     (id: FieldId, v: FieldVerification) => {
       if (!doc) return;
-      setField(doc.id, id, v);
+      if (isResolving(id)) {
+        if (v.status !== "pending") resolveField(doc.id, id, v);
+      } else if (!isLocked(id)) setField(doc.id, id, v);
       setEditing(undefined);
     },
-    [doc, setField],
+    [doc, setField, resolveField, fieldDual, role], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const actTag = (id: FieldId, v: TagDecision | null) => {
+    if (!doc) return;
+    const rec = tagDual[doc.id]?.[id];
+    const st = dualStatus(rec, tagAgree);
+    if (resolverHere && (st === "conflict" || st === "resolved")) {
+      if (v) resolveTag(doc.id, id, v);
+    } else if (reviewer && !(rec?.A && rec?.B)) setTag(doc.id, id, v);
+  };
 
   // Keyboard: ↑/↓ move between fields, A accept, C correct, R reject, D adjudicate.
   useEffect(() => {
@@ -199,11 +287,11 @@ export default function Extraction() {
         }
         return;
       }
-      if (!active) return;
+      if (!active || isLocked(active)) return;
       const k = e.key.toLowerCase();
       if (k === "a") act(active, { status: "accepted" });
       else if (k === "r") act(active, { status: "rejected" });
-      else if (k === "d") act(active, { status: "adjudicate" });
+      else if (k === "d" && !isResolving(active)) act(active, { status: "adjudicate" });
       else if (k === "c") {
         e.preventDefault();
         setEditing(active);
@@ -218,7 +306,7 @@ export default function Extraction() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, visibleFields, revealed, doc, act, selectFromForm]);
+  }, [active, visibleFields, revealed, doc, act, selectFromForm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!doc || !doc.trial) {
     return (
@@ -227,7 +315,9 @@ export default function Extraction() {
         <Card className="py-16 text-center">
           <ScanText className="mx-auto size-10 text-brand-300" />
           <div className="mt-3 text-[15px] font-medium text-ink">No trial reports to extract</div>
-          <p className="mt-1 text-[13px] text-ink-muted">Include randomised trials during screening to extract data here.</p>
+          <p className="mt-1 text-[13px] text-ink-muted">
+            Only the resolved included set reaches extraction. Include randomised trials during screening to extract data here.
+          </p>
           <Button className="mt-5" variant="outline" onClick={() => navigate("/review/screening")}>
             <ArrowLeft /> Back to screening
           </Button>
@@ -241,6 +331,7 @@ export default function Extraction() {
   const docIndex = extractable.findIndex((s) => s.id === doc.id);
   const nextDoc = extractable[docIndex + 1];
   const nonExtractable = included.length - extractable.length;
+  const docDone = docStats(doc);
 
   return (
     <div className="mx-auto flex max-w-[1560px] flex-col px-4 sm:px-6 lg:px-8 py-6 lg:py-8 xl:h-[calc(100dvh-var(--topbar-h))] xl:py-4">
@@ -254,15 +345,15 @@ export default function Extraction() {
               <ScanText /> Layout-aware NER
             </Badge>
             <Badge variant="amber" className="whitespace-nowrap">
-              <UserRound /> Human verification
+              <UserRound /> Dual human verification
             </Badge>
-            <AboutAutomation text="Values are extracted using layout-aware parsing and a fine-tuned entity recognition model, mapped to Annex 8, CONSORT, and PRISMA fields. Every value is verified by the analyst before synthesis." />
+            <AboutAutomation text="Values are extracted using layout-aware parsing and a fine-tuned entity recognition model, mapped to Annex 8, CONSORT, and PRISMA fields. Two reviewers verify every value independently; conflicts are resolved before synthesis." />
           </>
         }
-        description="Verify each extracted value against its highlighted source before it enters synthesis."
+        description="Each reviewer verifies every extracted value against its highlighted source; only agreed or resolved values enter synthesis."
       />
 
-      {/* Document tabs */}
+      {/* Document tabs + agreement */}
       <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
         {extractable.map((s) => {
           const st = docStats(s);
@@ -289,23 +380,18 @@ export default function Extraction() {
               <span>
                 <span className="block text-[13px] font-semibold leading-tight text-ink">{s.trial?.acronym}</span>
                 <span className="block text-[11px] tabular leading-tight text-ink-muted">
-                  {st.done}/{st.total} verified
+                  {st.done}/{st.total} resolved
                 </span>
               </span>
             </button>
           );
         })}
-        {reviewsOnly.length > 0 && (
-          <span className="ml-2 flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50/70 px-2 py-1 text-[12px] text-sky-900">
-            <Info className="size-3.5 shrink-0 text-sky-700" />
-            {reviewsOnlyNote(reviewsOnly.length)}
-          </span>
-        )}
-        {nonExtractable - reviewsOnly.length > 0 && (
+        {nonExtractable > 0 && (
           <span className="ml-2 text-[12px] text-ink-muted">
-            + {nonExtractable - reviewsOnly.length} included record(s) not eligible for trial data extraction
+            + {nonExtractable} included record(s) not eligible for trial data extraction
           </span>
         )}
+        <AgreementCard stage="extraction" stats={extractionAgreement} compact className="min-w-[420px] flex-1" />
       </div>
 
       {/* Verification strip */}
@@ -313,21 +399,28 @@ export default function Extraction() {
         <Card className="grid min-h-14 min-w-[640px] grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line">
           <div className="flex items-center gap-3 px-4 xl:px-5 py-2">
             <div className="shrink-0 leading-tight">
-              <div className="text-[11.5px] text-ink-muted">Fields verified</div>
+              <div className="text-[11.5px] text-ink-muted">
+                {reviewer ? `Committed by ${ROLE_LABELS[reviewer]}` : "Fields resolved"}
+              </div>
               {batchAccepted > 0 && (
                 <div
                   className="whitespace-nowrap text-[11px] tabular text-ink-soft"
                   title="Fields accepted with the batch action are logged separately from individually verified fields"
                 >
-                  {resolved - batchAccepted} verified · {batchAccepted} accepted in batch
+                  {committed - batchAccepted} verified · {batchAccepted} accepted in batch
+                </div>
+              )}
+              {!reviewer && conflictIds.length > 0 && (
+                <div className="whitespace-nowrap text-[11px] tabular text-coral">
+                  {conflictIds.length + tagConflicts.length} open conflict{conflictIds.length + tagConflicts.length === 1 ? "" : "s"}
                 </div>
               )}
             </div>
             <div className="shrink-0 text-[20px] font-semibold leading-none tabular text-ink">
-              <AnimatedNumber value={resolved} />
+              <AnimatedNumber value={committed} />
               <span className="text-[14px] font-normal text-ink-muted">/{fields.length}</span>
             </div>
-            <Progress value={(resolved / Math.max(1, fields.length)) * 100} className="h-1 min-w-10 flex-1" />
+            <Progress value={(committed / Math.max(1, fields.length)) * 100} className="h-1 min-w-10 flex-1" />
           </div>
           <div className="flex items-center gap-3 px-4 xl:px-5 py-2">
             <div className="shrink-0 text-[11.5px] text-ink-muted">Model confidence</div>
@@ -452,17 +545,20 @@ export default function Extraction() {
                 options={[
                   { value: "all", label: `All ${fields.length}` },
                   { value: "attention", label: `Needs attention ${attention}` },
-                  { value: "pending", label: `Pending ${fields.length - resolved}` },
+                  { value: "pending", label: `Pending ${fields.length - committed}` },
+                  { value: "conflicts", label: `Conflicts ${conflictSet.size}` },
                 ]}
               />
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!revealed || highPending === 0}
-                onClick={() => acceptHighConfidence([doc.id])}
-              >
-                <CheckCheck /> Accept {highPending} high-confidence
-              </Button>
+              {reviewer && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!revealed || highPending === 0}
+                  onClick={() => acceptHighConfidence([doc.id])}
+                >
+                  <CheckCheck /> Accept {highPending} high-confidence
+                </Button>
+              )}
             </div>
           </div>
 
@@ -483,26 +579,39 @@ export default function Extraction() {
                       {g}
                     </div>
                     <div className="space-y-2">
-                      {groupFields.map((f, i) => (
-                        <FieldRow
-                          key={f.def.id}
-                          field={f}
-                          index={i}
-                          enabledSchemas={enabledSchemas}
-                          v={docVerification[f.def.id]}
-                          active={active === f.def.id}
-                          hovered={hovered === f.def.id}
-                          editing={editing === f.def.id}
-                          rowRef={(el) => {
-                            if (el) rowRefs.current.set(f.def.id, el);
-                            else rowRefs.current.delete(f.def.id);
-                          }}
-                          onSelect={() => selectFromForm(f.def.id)}
-                          onHover={(h) => setHovered(h ? f.def.id : undefined)}
-                          onAct={(v) => act(f.def.id, v)}
-                          onEdit={(on) => setEditing(on ? f.def.id : undefined)}
-                        />
-                      ))}
+                      {groupFields.map((f, i) => {
+                        const t = tagFor(f.def.id);
+                        return (
+                          <FieldRow
+                            key={f.def.id}
+                            field={f}
+                            index={i}
+                            enabledSchemas={enabledSchemas}
+                            v={viewOf(f.def.id)}
+                            rec={recOf(f.def.id)}
+                            dual={dualOf(f.def.id)}
+                            reviewerMode={!!reviewer}
+                            resolving={isResolving(f.def.id)}
+                            locked={isLocked(f.def.id)}
+                            active={active === f.def.id}
+                            hovered={hovered === f.def.id}
+                            editing={editing === f.def.id}
+                            tag={t}
+                            tagRec={t ? tagDual[doc.id]?.[f.def.id] : undefined}
+                            resolverHere={resolverHere}
+                            rowRef={(el) => {
+                              if (el) rowRefs.current.set(f.def.id, el);
+                              else rowRefs.current.delete(f.def.id);
+                            }}
+                            onSelect={() => selectFromForm(f.def.id)}
+                            onHover={(h) => setHovered(h ? f.def.id : undefined)}
+                            onAct={(v) => act(f.def.id, v)}
+                            onResolve={(v) => resolveField(doc.id, f.def.id, v)}
+                            onEdit={(on) => setEditing(on ? f.def.id : undefined)}
+                            onTag={(v) => actTag(f.def.id, v)}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -535,13 +644,13 @@ export default function Extraction() {
                 <Kbd>D</Kbd> adjudicate
               </span>
             </div>
-            {resolved >= fields.length && nextDoc ? (
+            {docDone.done >= docDone.total && nextDoc ? (
               <Button size="sm" onClick={() => setDocId(nextDoc.id)}>
                 Next document <ArrowRight />
               </Button>
             ) : (
               <span className="shrink-0 whitespace-nowrap text-[12px] tabular text-ink-soft">
-                {fields.length - resolved} remaining
+                {docDone.total - docDone.done} unresolved
               </span>
             )}
           </div>
@@ -552,10 +661,19 @@ export default function Extraction() {
         className="mt-4 shrink-0 pt-3 xl:mt-3 xl:pt-2.5"
         note={
           allDocsDone
-            ? "All extracted fields have been verified. Verified values will be used for synthesis."
-            : `${remainingTotal} field(s) still awaiting verification across ${extractable.length} ${extractable.length === 1 ? "document" : "documents"}.`
+            ? "Every field and tag is resolved. Resolved values will be used for synthesis."
+            : `${remainingTotal} field(s) and tag(s) not yet resolved across ${extractable.length} ${extractable.length === 1 ? "document" : "documents"}; every item must be agreed or resolved before synthesis.`
         }
       >
+        <button
+          type="button"
+          onClick={applyReferenceExtraction}
+          title="Demo shortcut: fills both reviewers' remaining field and tag decisions with reference decisions, including a few disagreements to resolve"
+          className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-dashed border-line bg-cream/40 px-2.5 py-1.5 text-[11.5px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700"
+        >
+          <Wand2 className="size-3.5 shrink-0" />
+          Demo shortcut: fill remaining with reference decisions
+        </button>
         <Button size="lg" disabled={!allDocsDone} onClick={() => navigate("/review/synthesis")}>
           Proceed to synthesis
           <ArrowRight />
@@ -585,37 +703,60 @@ function FieldRow({
   index,
   enabledSchemas,
   v,
+  rec,
+  dual,
+  reviewerMode,
+  resolving,
+  locked,
   active,
   hovered,
   editing,
+  tag,
+  tagRec,
+  resolverHere,
   rowRef,
   onSelect,
   onHover,
   onAct,
+  onResolve,
   onEdit,
+  onTag,
 }: {
   field: ExtractedField;
   index: number;
   enabledSchemas: SchemaKey[];
   v?: FieldVerification;
+  rec?: DualRecord<FieldVerification>;
+  dual: DualStatus;
+  reviewerMode: boolean;
+  resolving: boolean;
+  locked: boolean;
   active: boolean;
   hovered: boolean;
   editing: boolean;
+  tag?: TagItem;
+  tagRec?: DualRecord<TagDecision>;
+  resolverHere: boolean;
   rowRef: (el: HTMLDivElement | null) => void;
   onSelect: () => void;
   onHover: (h: boolean) => void;
   onAct: (v: FieldVerification) => void;
+  onResolve: (v: FieldVerification) => void;
   onEdit: (on: boolean) => void;
+  onTag: (v: TagDecision | null) => void;
 }) {
-  const status = v?.status ?? "pending";
+  const shown = resolving ? rec?.resolved : v;
+  const status = shown?.status ?? "pending";
   const [draft, setDraft] = useState(field.extracted);
   const inputRef = useRef<HTMLInputElement>(null);
   const score = confidenceScore(field.def.id + field.extracted, field.confidence);
-  const final = finalFieldValue(field.extracted, v);
+  const final = finalFieldValue(field.extracted, shown);
+  const hidden = PROTOTYPE_CONFIG.hideSuggestionsUntilCommit && reviewerMode && !v;
+  const showActions = !editing && !locked && (status === "pending" || (resolving && dual === "conflict"));
 
   useEffect(() => {
     if (editing) {
-      setDraft(v?.status === "corrected" ? (v.value ?? field.extracted) : field.extracted);
+      setDraft(shown?.status === "corrected" ? (shown.value ?? field.extracted) : field.extracted);
       requestAnimationFrame(() => inputRef.current?.select());
     }
   }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -634,10 +775,11 @@ function FieldRow({
           : hovered
             ? "border-brand-300 bg-white"
             : "border-line bg-white",
-        status === "accepted" && !active && "border-brand-200 bg-brand-50/30",
-        status === "corrected" && !active && "border-sky-200 bg-sky-50/40 animate-flash",
-        status === "rejected" && !active && "border-coral/25 bg-coral-soft/20 opacity-70",
-        status === "adjudicate" && !active && "border-flag/35 bg-flag-soft/35",
+        dual === "conflict" && !active && "border-coral/40 bg-coral-soft/15",
+        dual !== "conflict" && status === "accepted" && !active && "border-brand-200 bg-brand-50/30",
+        dual !== "conflict" && status === "corrected" && !active && "border-sky-200 bg-sky-50/40 animate-flash",
+        dual !== "conflict" && status === "rejected" && !active && "border-coral/25 bg-coral-soft/20 opacity-70",
+        dual !== "conflict" && status === "adjudicate" && !active && "border-flag/35 bg-flag-soft/35",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -685,7 +827,16 @@ function FieldRow({
           )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <ConfidenceBadge confidence={field.confidence} score={score} />
+          {hidden ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-dashed border-line px-2 py-0.5 text-[11px] text-ink-muted"
+              title="Model confidence is hidden until you commit this field"
+            >
+              <EyeOff className="size-3" /> Confidence hidden
+            </span>
+          ) : (
+            <ConfidenceBadge confidence={field.confidence} score={score} />
+          )}
         </div>
       </div>
 
@@ -701,8 +852,9 @@ function FieldRow({
             ))}
         </div>
 
-        {status === "pending" && !editing ? (
+        {showActions ? (
           <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {resolving && <span className="mr-1 text-[10.5px] font-medium text-[#991b1b]">Final:</span>}
             <ActionBtn title="Accept (A)" tone="accept" onClick={() => onAct({ status: "accepted" })}>
               <Check /> Accept
             </ActionBtn>
@@ -712,24 +864,207 @@ function FieldRow({
             <ActionBtn title="Reject (R)" tone="reject" onClick={() => onAct({ status: "rejected" })}>
               <X />
             </ActionBtn>
-            <ActionBtn title="Send to adjudication (D)" tone="adjudicate" onClick={() => onAct({ status: "adjudicate" })}>
-              <Scale />
-            </ActionBtn>
+            {!resolving && (
+              <ActionBtn title="Flag for adjudication (D)" tone="adjudicate" onClick={() => onAct({ status: "adjudicate" })}>
+                <Scale />
+              </ActionBtn>
+            )}
           </div>
-        ) : !editing ? (
+        ) : !editing && status !== "pending" ? (
           <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            <StatusPill status={status} batch={v?.batch} />
-            <button
-              type="button"
-              title="Undo"
-              onClick={() => onAct({ status: "pending" })}
-              className="grid size-6 cursor-pointer place-items-center rounded-md text-ink-muted hover:bg-cream-dark hover:text-ink"
-            >
-              <Undo2 className="size-3.5" />
-            </button>
+            <StatusPill status={status} batch={shown?.batch} />
+            {locked ? (
+              reviewerMode && (
+                <span className="flex items-center gap-1 text-[10.5px] text-ink-muted" title="Both reviewers have committed">
+                  <Lock className="size-3" /> Committed
+                </span>
+              )
+            ) : !resolving ? (
+              <button
+                type="button"
+                title="Withdraw (allowed until the other reviewer commits)"
+                onClick={() => onAct({ status: "pending" })}
+                className="grid size-6 cursor-pointer place-items-center rounded-md text-ink-muted hover:bg-cream-dark hover:text-ink"
+              >
+                <Undo2 className="size-3.5" />
+              </button>
+            ) : null}
           </div>
+        ) : !editing && !reviewerMode && dual !== "conflict" ? (
+          <span className="text-[11px] text-ink-muted">Awaiting both reviewers</span>
         ) : null}
       </div>
+
+      {(rec?.A || rec?.B) && (
+        <div
+          className={cn(
+            "mt-2 rounded-md border px-2.5 py-1.5",
+            dual === "conflict" ? "border-coral/35 bg-coral-soft/30" : "border-line bg-cream/50",
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DualStatusLine rec={rec} status={dual} describe={describeField} />
+          {resolving && dual === "conflict" && rec?.A && rec?.B && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+              <span className="flex items-center gap-1 font-medium text-[#991b1b]">
+                <Scale className="size-3.5" /> Resolve:
+              </span>
+              <ResolveChoice label={`Use Reviewer A · ${describeField(rec.A)}`} onClick={() => onResolve(strip(rec.A!))} />
+              <ResolveChoice label={`Use Reviewer B · ${describeField(rec.B)}`} onClick={() => onResolve(strip(rec.B!))} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {tag && (
+        <TagRow
+          tag={tag}
+          rec={tagRec}
+          reviewerMode={reviewerMode}
+          resolverHere={resolverHere}
+          hidden={PROTOTYPE_CONFIG.hideSuggestionsUntilCommit && reviewerMode && !v}
+          onTag={onTag}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResolveChoice({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      className="max-w-[260px]"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      <span className="truncate">{label}</span>
+    </Button>
+  );
+}
+
+function TagRow({
+  tag,
+  rec,
+  reviewerMode,
+  resolverHere,
+  hidden,
+  onTag,
+}: {
+  tag: TagItem;
+  rec?: DualRecord<TagDecision>;
+  reviewerMode: boolean;
+  resolverHere: boolean;
+  hidden: boolean;
+  onTag: (v: TagDecision | null) => void;
+}) {
+  const { role } = useReview();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(tag.label);
+  const st = dualStatus(rec, tagAgree);
+  const resolving = resolverHere && (st === "conflict" || st === "resolved");
+  const mine = reviewerMode && role !== "adjudicator" ? rec?.[role] : undefined;
+  const shown = resolving ? rec?.resolved : reviewerMode ? mine : tag.final;
+  const locked = !resolving && (!reviewerMode || !!(rec?.A && rec?.B));
+  const canAct = !locked && (!shown || (resolving && st === "conflict"));
+  const text = shown?.status === "corrected" ? shown.value : tag.label;
+
+  return (
+    <div
+      className="mt-2 rounded-md border border-dashed border-brand-200 bg-brand-50/30 px-2.5 py-1.5"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+        <span className="flex items-center gap-1 font-semibold text-ink-soft">
+          <Tag className="size-3 text-brand-600" /> Stakeholder tag
+        </span>
+        <span className="text-[10.5px] text-ink-muted">rule-based, not benchmarked</span>
+        {hidden ? (
+          <span className="flex items-center gap-1 text-ink-muted">
+            <EyeOff className="size-3" /> Suggestion hidden until you commit this field
+          </span>
+        ) : editing ? (
+          <form
+            className="flex min-w-[260px] flex-1 items-center gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onTag({ status: "corrected", value: draft.trim() || tag.label });
+              setEditing(false);
+            }}
+          >
+            <Input value={draft} onChange={(e) => setDraft(e.target.value)} className="h-7 bg-white text-[12px]" autoFocus />
+            <Button type="submit" size="xs">
+              Save
+            </Button>
+            <Button type="button" size="xs" variant="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </form>
+        ) : (
+          <>
+            <span
+              className={cn(
+                "rounded-full border px-2 py-px font-medium",
+                shown?.status === "removed"
+                  ? "border-line bg-white text-ink-muted line-through"
+                  : "border-brand-200 bg-white text-brand-800",
+              )}
+            >
+              {text}
+            </span>
+            {!shown && <Badge variant="slate">Suggested</Badge>}
+            {shown && (
+              <Badge variant={shown.status === "removed" ? "slate" : shown.status === "corrected" ? "amber" : "default"}>
+                {TAG_STATUS_LABEL[shown.status]}
+              </Badge>
+            )}
+            {canAct && (
+              <span className="ml-auto flex items-center gap-1">
+                {resolving && <span className="text-[10.5px] font-medium text-[#991b1b]">Final:</span>}
+                <Button size="xs" variant="outline" onClick={() => onTag({ status: "accepted" })}>
+                  <Check /> Accept
+                </Button>
+                <Button size="xs" variant="ghost" title="Correct tag" onClick={() => setEditing(true)}>
+                  <Pencil />
+                </Button>
+                <Button size="xs" variant="ghost" title="Remove tag" onClick={() => onTag({ status: "removed" })}>
+                  <Trash2 />
+                </Button>
+              </span>
+            )}
+            {!canAct && shown && !locked && !resolving && (
+              <button
+                type="button"
+                title="Withdraw"
+                onClick={() => onTag(null)}
+                className="ml-auto grid size-5 cursor-pointer place-items-center rounded text-ink-muted hover:bg-cream-dark hover:text-ink"
+              >
+                <Undo2 className="size-3" />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {(rec?.A || rec?.B) && !hidden && (
+        <DualStatusLine rec={rec} status={st} describe={describeTag} className="mt-1" />
+      )}
+      {resolving && st === "conflict" && rec?.A && rec?.B && (
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+          <span className="flex items-center gap-1 font-medium text-[#991b1b]">
+            <Scale className="size-3.5" /> Resolve:
+          </span>
+          <ResolveChoice label={`Use Reviewer A · ${describeTag(rec.A)}`} onClick={() => onTag(strip(rec.A!))} />
+          <ResolveChoice label={`Use Reviewer B · ${describeTag(rec.B)}`} onClick={() => onTag(strip(rec.B!))} />
+        </div>
+      )}
+      {!reviewerMode && !rec?.A && !rec?.B && (
+        <div className="mt-0.5 text-[10.5px] text-ink-muted">
+          Awaiting both reviewers · resolved by {ROLE_LABELS[RESOLVER_ROLE].toLowerCase()} on conflict
+        </div>
+      )}
     </div>
   );
 }
@@ -773,7 +1108,7 @@ function StatusPill({ status, batch }: { status: string; batch?: boolean }) {
       : { cls: "bg-brand-600 text-white", label: "Accepted" },
     corrected: { cls: "bg-sky-700 text-white", label: "Corrected" },
     rejected: { cls: "bg-coral text-white", label: "Rejected" },
-    adjudicate: { cls: "bg-[#b45309] text-white", label: "Adjudication" },
+    adjudicate: { cls: "bg-[#b45309] text-white", label: "Flagged" },
   };
   const s = map[status];
   if (!s) return null;

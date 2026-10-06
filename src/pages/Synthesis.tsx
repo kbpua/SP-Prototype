@@ -1,35 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowRight, ChevronDown, Info, Sparkles, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowRight, ChevronDown, Info, Lock, Play, Sparkles, UserRound } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { PROTOTYPE_CONFIG } from "@/config/prototypeConfig";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Segmented } from "@/components/ui/segmented";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { PageContainer, PageHeader, StageFooter } from "@/components/PageHeader";
 import { GUIDE_REFS, GuideRef } from "@/components/guide";
 import { RobDots, RobTrafficLight } from "@/components/RobTrafficLight";
-import { activeFieldIds, useReview, type GradeCertainty, type GradeLevel } from "@/state/ReviewContext";
+import {
+  RESOLVER_ROLE,
+  ROLE_LABELS,
+  activeFieldIds,
+  useReview,
+  type GradeCertainty,
+  type GradeLevel,
+} from "@/state/ReviewContext";
 import { ROB2_DOMAINS } from "@/data/mockData";
-import { dersimonianLaird, formatP, type EffectMeasure, type PooledResult, type StudyInput } from "@/lib/meta";
+import {
+  dersimonianLaird,
+  formatP,
+  isRatioMeasure,
+  type EffectMeasure,
+  type PooledResult,
+  type StudyInput,
+} from "@/lib/meta";
+import { MEASURE_METHOD, MEASURE_NAMES, OUTCOME_TYPE_LABELS, outcomeDataKey } from "@/lib/effectMeasures";
 import {
   GRADE_DOMAINS,
   GRADE_LEVEL_LABELS,
+  NO_HR_MESSAGE,
   amstarOverall,
   buildStudyInputs,
   finalValues,
   gradeSuggestions,
+  outcomeFindings,
   reviewsOnlyNote,
   robOverall,
 } from "@/lib/review";
 import { cn } from "@/lib/utils";
 
-const MEASURE_NAMES: Record<EffectMeasure, string> = {
-  RR: "Risk ratio",
-  OR: "Odds ratio",
-  HR: "Hazard ratio",
-  MD: "Mean difference",
-};
+const EFFECT_NOUN: Record<EffectMeasure, string> = { HR: "hazard", RR: "risk", OR: "odds", MD: "" };
 
 const CERTAINTY: { value: GradeCertainty; label: string }[] = [
   { value: "high", label: "High" },
@@ -58,27 +71,55 @@ export default function Synthesis() {
     grade,
     setGrade,
     prisma,
+    tags,
+    fieldsResolved,
+    effectMeasures,
+    primaryOutcome,
     markVisited,
   } = useReview();
-  const [measure, setMeasure] = useState<EffectMeasure>(config.effectMeasure === "MD" ? "RR" : config.effectMeasure);
+  const measure: EffectMeasure = primaryOutcome?.measure ?? "HR";
+  const ratio = isRatioMeasure(measure);
   const [excludeHighRob, setExcludeHighRob] = useState(false);
   const [conformanceOpen, setConformanceOpen] = useState(true);
+  const [runAnyway, setRunAnyway] = useState(false);
 
   useEffect(() => markVisited("synthesis"), [markVisited]);
 
-  const { inputs, skipped } = useMemo(() => buildStudyInputs(extractable, verification), [extractable, verification]);
+  const unresolved = fieldsResolved.total - fieldsResolved.resolved;
+  const gateMode = PROTOTYPE_CONFIG.synthesisGate;
+  const blocked = unresolved > 0 && (gateMode === "block" || !runAnyway);
+  const resolvedOnly = gateMode === "block";
+
+  const { inputs, skipped } = useMemo(
+    () => buildStudyInputs(extractable, verification, resolvedOnly, primaryOutcome),
+    [extractable, verification, resolvedOnly, primaryOutcome],
+  );
+  const noHr = measure === "HR" && inputs.length === 0 && skipped.some((s) => s.reason === NO_HR_MESSAGE);
   const highRobIds = new Set(extractable.filter((s) => robOverall(appraisal[s.id]).label === "High risk").map((s) => s.id));
   const analysed = excludeHighRob ? inputs.filter((i) => !highRobIds.has(i.id)) : inputs;
-  const result = useMemo(() => dersimonianLaird(measure, analysed), [measure, analysed]);
+  const result = useMemo(() => (blocked ? null : dersimonianLaird(measure, analysed)), [blocked, measure, analysed]);
   const k = result?.studies.length ?? 0;
+  const nullValue = ratio ? 1 : 0;
   const single = k === 1;
 
-  const activeIds = activeFieldIds(config.schemas);
-  const pendingDocs = extractable.filter((s) =>
-    Object.values(verification[s.id] ?? {}).filter((v) => v && v.status !== "pending").length === 0,
-  );
-  const anyUnverified = extractable.some((s) =>
-    [...activeIds].some((id) => (verification[s.id]?.[id]?.status ?? "pending") === "pending"),
+  const activeIds = activeFieldIds(config.schemas, effectMeasures);
+  const secondary = effectMeasures
+    .filter((o) => !o.isPrimary)
+    .map((o) => {
+      if (!outcomeDataKey(o)) return { o, status: "Not pooled in this demo" };
+      if (blocked) return { o, status: "Waiting for every field to be resolved" };
+      const b = buildStudyInputs(extractable, verification, resolvedOnly, o);
+      const r = dersimonianLaird(o.measure, b.inputs);
+      if (!r) return { o, status: b.skipped[0]?.reason ?? "Not pooled in this demo" };
+      return {
+        o,
+        status: `${o.measure} ${r.est.toFixed(2)} (95% CI ${r.lo.toFixed(2)} to ${r.hi.toFixed(2)}) · k = ${r.studies.length}`,
+        pooled: true,
+      };
+    });
+  const resolvedUsed = analysed.reduce(
+    (acc, i) => acc + [...activeIds].filter((id) => verification[i.id]?.[id]).length,
+    0,
   );
   const appraisalIncomplete = extractable.some((s) => robOverall(appraisal[s.id]).label === "Not assessed");
 
@@ -91,7 +132,7 @@ export default function Synthesis() {
     consistency: !result ? "—" : single ? "I² not estimable (k = 1)" : `I² = ${result.i2.toFixed(0)}%`,
     precision: !result
       ? "—"
-      : `95% CI ${result.lo.toFixed(2)}–${result.hi.toFixed(2)} ${result.lo < 1 && result.hi > 1 ? "crosses" : "excludes"} 1`,
+      : `95% CI ${result.lo.toFixed(2)}–${result.hi.toFixed(2)} ${result.lo < nullValue && result.hi > nullValue ? "crosses" : "excludes"} ${nullValue}`,
     directness: "Analyst-entered",
     reporting: "Analyst-entered",
   };
@@ -141,33 +182,66 @@ export default function Synthesis() {
       <PageHeader
         step="Stage 5 of 6"
         title="Evidence synthesis"
-        description="Verified outcome data pooled with a random-effects meta-analysis."
+        description={`Resolved outcome data pooled with a random-effects meta-analysis, using the effect measure pre-specified for each outcome (primary: ${MEASURE_NAMES[measure].toLowerCase()}).`}
         actions={
-          <Segmented<EffectMeasure>
-            value={measure}
-            onChange={setMeasure}
-            options={[
-              { value: "RR", label: "RR" },
-              { value: "OR", label: "OR" },
-              { value: "HR", label: "HR" },
-              { value: "MD", label: "MD", disabled: true, title: "Not applicable: dichotomous outcome" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" title={primaryOutcome?.outcomeName}>
+              Primary outcome · {measure} · {primaryOutcome ? OUTCOME_TYPE_LABELS[primaryOutcome.type] : "—"}
+            </Badge>
+            <button
+              type="button"
+              onClick={() => navigate("/review/config")}
+              className="cursor-pointer text-[12px] font-medium text-brand-700 hover:underline"
+            >
+              Set in Configure
+            </button>
+          </div>
         }
       />
 
-      {pendingDocs.length > 0 && (
-        <div className="mb-3 flex items-center gap-3 rounded-lg border border-flag/30 bg-flag-soft/60 px-4 py-3 text-[13px] text-[#8a5a2b]">
-          <AlertTriangle className="size-4 shrink-0" />
-          {pendingDocs.length} document(s) have not been verified yet — their unverified extractions are shown for
-          preview only.
-        </div>
-      )}
-      {reviewsOnly.length > 0 && (
+      {PROTOTYPE_CONFIG.showOutOfScopeMocks && reviewsOnly.length > 0 && (
         <div className="mb-5 flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-2 text-[12.5px] text-sky-900">
           <Info className="size-4 shrink-0 text-sky-700" />
           {reviewsOnlyNote(reviewsOnly.length)}
         </div>
+      )}
+
+      {unresolved > 0 && (
+        <Card className={cn("mb-5 px-5 py-4", blocked ? "border-flag/40" : "border-flag/30 bg-flag-soft/30")}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <Lock className="mt-0.5 size-4 shrink-0 text-[#b45309]" />
+              <div className="min-w-0">
+                <div className="text-[14px] font-semibold text-ink">
+                  {gateMode === "block" ? "Synthesis is blocked until every field is resolved" : "Some fields are unresolved"}
+                </div>
+                <div className="mt-0.5 text-[12.5px] text-ink-muted">
+                  <span className="tabular font-semibold text-ink-soft">
+                    {fieldsResolved.resolved} of {fieldsResolved.total} fields resolved
+                  </span>{" "}
+                  · pooling uses only fields both reviewers agreed on or the {ROLE_LABELS[RESOLVER_ROLE].toLowerCase()} resolved.
+                </div>
+                <Progress
+                  value={(fieldsResolved.resolved / Math.max(1, fieldsResolved.total)) * 100}
+                  className="mt-2 h-1.5 max-w-sm"
+                />
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigate("/review/extraction")}>
+                Resolve fields
+              </Button>
+              <Button
+                size="sm"
+                disabled={gateMode === "block" || runAnyway}
+                title={gateMode === "block" ? `${unresolved} unresolved field(s)` : undefined}
+                onClick={() => setRunAnyway(true)}
+              >
+                <Play /> {gateMode === "block" ? "Run meta-analysis" : "Run anyway"}
+              </Button>
+            </div>
+          </div>
+        </Card>
       )}
 
       {result ? (
@@ -178,9 +252,9 @@ export default function Synthesis() {
                 <div className="text-[12.5px] font-medium text-brand-800">
                   Pooled {MEASURE_NAMES[measure].toLowerCase()} · random effects
                 </div>
-                {anyUnverified && (
-                  <Badge variant="amber" title="Some extracted fields have not been verified yet">
-                    <AlertTriangle /> Preview: includes unverified values
+                {gateMode === "warn" && unresolved > 0 && (
+                  <Badge variant="amber" title={`${unresolved} field(s) have not been resolved`}>
+                    <AlertTriangle /> Preview: includes unverified values ({unresolved} unresolved)
                   </Badge>
                 )}
               </div>
@@ -193,11 +267,22 @@ export default function Synthesis() {
                 </span>
               </div>
               <p className="mt-2.5 text-[13.5px] leading-relaxed text-ink-soft">
-                {single ? "From a single trial" : `Across ${k} trials`}, dapagliflozin was associated with a{" "}
-                <b className="text-ink">{Math.round((1 - result.est) * 100)}% relative reduction</b> in the primary
-                composite outcome versus control (z = {result.z.toFixed(2)}, p {formatP(result.p).startsWith("<") ? "" : "= "}
+                {single ? "From a single trial" : `Across ${k} trials`}, dapagliflozin was associated with{" "}
+                {ratio ? (
+                  <b className="text-ink">
+                    {Math.abs(Math.round((1 - result.est) * 100))}% {result.est <= 1 ? "lower" : "higher"}{" "}
+                    {EFFECT_NOUN[measure]}
+                  </b>
+                ) : (
+                  <b className="text-ink">a mean difference of {result.est.toFixed(2)}</b>
+                )}{" "}
+                for the primary outcome versus control (z = {result.z.toFixed(2)}, p{" "}
+                {formatP(result.p).startsWith("<") ? "" : "= "}
                 {formatP(result.p)}).
               </p>
+              <div className="mt-2 text-[12px] tabular text-ink-muted">
+                Based on {k} {k === 1 ? "study" : "studies"} · {resolvedUsed} resolved fields · {MEASURE_METHOD[measure]}
+              </div>
             </Card>
 
             <Card className="col-span-1 lg:col-span-2 px-5 sm:px-6 py-5">
@@ -226,9 +311,9 @@ export default function Synthesis() {
           <Card className="mt-5">
             <CardHeader className="flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
-                <CardTitle>Forest plot — primary composite outcome</CardTitle>
+                <CardTitle>Forest plot — primary outcome</CardTitle>
                 <CardDescription>
-                  Cardiovascular death or worsening heart failure · dapagliflozin vs control
+                  {primaryOutcome?.outcomeName} · {MEASURE_NAMES[measure]} (random effects) · dapagliflozin vs control
                 </CardDescription>
               </div>
               <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-soft whitespace-nowrap">
@@ -243,13 +328,20 @@ export default function Synthesis() {
               </label>
             </CardHeader>
             <CardContent className="overflow-x-auto">
-              <div className="min-w-[640px]">
-                <ForestPlot result={result} inputs={analysed} measure={measure} />
-              </div>
+              {ratio ? (
+                <div className="min-w-[640px]">
+                  <ForestPlot result={result} inputs={analysed} measure={measure} />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-line py-8 text-center text-[12.5px] text-ink-muted">
+                  Mean-difference forest plot is not drawn in this prototype; see the pooled estimate above.
+                </div>
+              )}
               {single && (
                 <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-ink-muted">
                   <Info className="size-3.5 shrink-0" />
-                  Single study: the pooled estimate equals the study estimate.
+                  Single study: the pooled estimate equals the study estimate
+                  {measure === "HR" ? " (illustrative: pooled from the reported HR)." : "."}
                 </div>
               )}
             </CardContent>
@@ -257,11 +349,68 @@ export default function Synthesis() {
         </>
       ) : (
         <Card className="py-16 text-center text-[13px] text-ink-muted">
-          No studies with complete outcome data are available for pooling.
+          {blocked
+            ? "The pooled result appears once every field is resolved."
+            : noHr
+              ? NO_HR_MESSAGE
+              : "No studies with complete outcome data are available for pooling."}
         </Card>
       )}
 
-      {skipped.length > 0 && (
+      <Card className="mt-5">
+        <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 pb-3">
+          <div>
+            <CardTitle>Outcomes and effect measures</CardTitle>
+            <CardDescription>Each outcome is pooled with the measure pre-specified in Configure</CardDescription>
+          </div>
+          <GuideRef>Guide p. 15 · Relative effect size with confidence interval</GuideRef>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-line text-left text-[12px] text-ink-muted">
+                <th className="py-2 pr-3 font-medium">Outcome</th>
+                <th className="py-2 pr-3 font-medium">Type</th>
+                <th className="py-2 pr-3 font-medium">Measure</th>
+                <th className="py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {primaryOutcome && (
+                <tr className="border-b border-line/60">
+                  <td className="py-2.5 pr-3">
+                    <span className="font-medium text-ink">{primaryOutcome.outcomeName}</span>{" "}
+                    <Badge variant="solid" className="ml-1">
+                      Primary
+                    </Badge>
+                  </td>
+                  <td className="py-2.5 pr-3 text-ink-soft">{OUTCOME_TYPE_LABELS[primaryOutcome.type]}</td>
+                  <td className="py-2.5 pr-3 tabular text-ink">{measure}</td>
+                  <td className="py-2.5 tabular text-ink-soft">
+                    {result
+                      ? `${measure} ${result.est.toFixed(2)} (95% CI ${result.lo.toFixed(2)} to ${result.hi.toFixed(2)}) · k = ${k}`
+                      : blocked
+                        ? "Waiting for every field to be resolved"
+                        : noHr
+                          ? NO_HR_MESSAGE
+                          : (skipped[0]?.reason ?? "Not pooled")}
+                  </td>
+                </tr>
+              )}
+              {secondary.map(({ o, status }) => (
+                <tr key={o.outcomeId} className="border-b border-line/60 last:border-0">
+                  <td className="py-2.5 pr-3 font-medium text-ink">{o.outcomeName}</td>
+                  <td className="py-2.5 pr-3 text-ink-soft">{OUTCOME_TYPE_LABELS[o.type]}</td>
+                  <td className="py-2.5 pr-3 tabular text-ink">{o.measure}</td>
+                  <td className="py-2.5 tabular text-ink-soft">{status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      {!blocked && skipped.length > 0 && (
         <div className="mt-4 flex items-center gap-2 text-[12.5px] text-ink-muted">
           <Info className="size-4" />
           Excluded from pooling: {skipped.map((s) => `${s.study.trial?.acronym} (${s.reason.toLowerCase()})`).join("; ")}
@@ -276,7 +425,7 @@ export default function Synthesis() {
         description={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
             <span>Cochrane RoB 2 domains (D1–D5) and overall, read from the appraisal stage</span>
-            <GuideRef>{GUIDE_REFS.appraisal}</GuideRef>
+            {PROTOTYPE_CONFIG.showOutOfScopeMocks && <GuideRef>{GUIDE_REFS.appraisal}</GuideRef>}
           </span>
         }
         footer={
@@ -295,7 +444,7 @@ export default function Synthesis() {
         }
       />
 
-      {reviewsOnly.length > 0 && (
+      {PROTOTYPE_CONFIG.showOutOfScopeMocks && reviewsOnly.length > 0 && (
         <Card className="mt-5">
           <CardHeader className="pb-3">
             <CardTitle>Systematic reviews appraised (AMSTAR 2) — not pooled</CardTitle>
@@ -326,7 +475,9 @@ export default function Synthesis() {
       <Card className="mt-5">
         <CardHeader>
           <CardTitle>Verified extraction summary</CardTitle>
-          <CardDescription>Final values after human verification, with risk-of-bias judgements from appraisal</CardDescription>
+          <CardDescription>
+            Resolved values only (unresolved shown as —), with risk-of-bias judgements from appraisal
+          </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="w-full text-[13px]">
@@ -335,18 +486,24 @@ export default function Synthesis() {
                 <th className="py-2 pr-3 font-medium">Study</th>
                 <th className="py-2 pr-3 font-medium">Setting</th>
                 <th className="py-2 pr-3 text-right font-medium">Randomised</th>
-                <th className="py-2 pr-3 text-right font-medium">Events / N (dapagliflozin)</th>
-                <th className="py-2 pr-3 text-right font-medium">Events / N (control)</th>
-                <th className="py-2 pr-3 font-medium">Reported HR (95% CI)</th>
+                <th className="py-2 pr-3 text-right font-medium">N (dapagliflozin / control)</th>
+                <th className="py-2 pr-3 font-medium">Primary outcome result ({measure})</th>
                 <th className="py-2 pr-3 font-medium">Follow-up</th>
-                <th className="py-2 font-medium" title={ROB2_DOMAINS.map((d) => d.title).join("\n")}>
+                <th className="py-2 pr-3 font-medium" title={ROB2_DOMAINS.map((d) => d.title).join("\n")}>
                   Risk of bias (D1–D5)
+                </th>
+                <th className="py-2 font-medium">
+                  Stakeholder tag
+                  <div className="text-[10.5px] font-normal">rule-based, not benchmarked</div>
                 </th>
               </tr>
             </thead>
             <tbody>
               {extractable.map((s) => {
-                const v = finalValues(s, verification);
+                const v = finalValues(s, verification, true);
+                const studyTags = tags
+                  .filter((t) => t.studyId === s.id && t.final && t.final.status !== "removed")
+                  .map((t) => (t.final?.status === "corrected" ? t.final.value : t.label));
                 const rob = robOverall(appraisal[s.id]);
                 const corrected = Object.values(verification[s.id] ?? {}).filter((x) => x?.status === "corrected").length;
                 return (
@@ -362,14 +519,11 @@ export default function Synthesis() {
                     </td>
                     <td className="py-2.5 pr-3 text-right tabular">{v.randomized ?? "—"}</td>
                     <td className="py-2.5 pr-3 text-right tabular">
-                      {v.eT ?? "—"} / {v.nT ?? "—"}
+                      {v.nT ?? "—"} / {v.nC ?? "—"}
                     </td>
-                    <td className="py-2.5 pr-3 text-right tabular">
-                      {v.eC ?? "—"} / {v.nC ?? "—"}
-                    </td>
-                    <td className="py-2.5 pr-3 tabular">{v.hr ?? "—"}</td>
+                    <td className="py-2.5 pr-3 tabular">{primaryOutcome ? outcomeFindings(v, primaryOutcome) : "—"}</td>
                     <td className="py-2.5 pr-3 text-ink-soft">{v.followUp ?? "—"}</td>
-                    <td className="py-2.5">
+                    <td className="py-2.5 pr-3">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <RobDots assessment={appraisal[s.id]} />
                         {rob.label === "Not assessed" ? (
@@ -385,6 +539,17 @@ export default function Synthesis() {
                         )}
                       </div>
                     </td>
+                    <td className="py-2.5 text-[12px] text-ink-soft">
+                      {studyTags.length ? (
+                        <div className="flex flex-col gap-0.5">
+                          {studyTags.map((t) => (
+                            <span key={t}>{t}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -393,6 +558,8 @@ export default function Synthesis() {
         </CardContent>
       </Card>
 
+      {PROTOTYPE_CONFIG.showOutOfScopeMocks && (
+      <>
       <Card className="mt-5">
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
           <div>
@@ -513,6 +680,8 @@ export default function Synthesis() {
           </CardContent>
         )}
       </Card>
+      </>
+      )}
 
       <StageFooter pinned note="Results are recalculated whenever verified values change.">
         <Button onClick={() => navigate("/review/export")}>
@@ -558,6 +727,9 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
   const maxW = Math.max(...result.studies.map((s) => s.weight));
   const byId = new Map(inputs.map((i) => [i.id, i]));
   const ease = "all 700ms cubic-bezier(0.2, 0.7, 0.2, 1)";
+  const byEvents = measure === "RR" || measure === "OR";
+  const armSub = byEvents ? "events / total" : "randomised";
+  const arm = (e: number, n: number) => (byEvents ? `${e} / ${n}` : n.toLocaleString());
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full select-none font-sans" role="img" aria-label="Forest plot">
@@ -565,11 +737,11 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
       <g fill="#64748b" fontSize={13} fontWeight={500}>
         <text x={COL.study} y={24}>Study</text>
         <text x={COL.treat + 60} y={16} textAnchor="middle">Dapagliflozin</text>
-        <text x={COL.treat + 60} y={32} textAnchor="middle" fontSize={11.5}>events / total</text>
+        <text x={COL.treat + 60} y={32} textAnchor="middle" fontSize={11.5}>{armSub}</text>
         <text x={COL.ctrl + 60} y={16} textAnchor="middle">Control</text>
-        <text x={COL.ctrl + 60} y={32} textAnchor="middle" fontSize={11.5}>events / total</text>
+        <text x={COL.ctrl + 60} y={32} textAnchor="middle" fontSize={11.5}>{armSub}</text>
         <text x={(COL.plotL + COL.plotR) / 2} y={24} textAnchor="middle">
-          {measure} (95% CI)
+          {MEASURE_NAMES[measure]} (random effects)
         </text>
         <text x={COL.est} y={24}>{measure} [95% CI]</text>
         <text x={COL.weight} y={24} textAnchor="end">Weight</text>
@@ -633,10 +805,10 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
               <tspan fontWeight={400} fill="#64748b"> {s.year}</tspan>
             </text>
             <text x={COL.treat + 60} y={y + 4.5} fontSize={13.5} textAnchor="middle" fill="#475569" className="tabular">
-              {raw ? `${raw.eT} / ${raw.nT}` : "—"}
+              {raw ? arm(raw.eT, raw.nT) : "—"}
             </text>
             <text x={COL.ctrl + 60} y={y + 4.5} fontSize={13.5} textAnchor="middle" fill="#475569" className="tabular">
-              {raw ? `${raw.eC} / ${raw.nC}` : "—"}
+              {raw ? arm(raw.eC, raw.nC) : "—"}
             </text>
             {/* CI Whisker Ends */}
             <line x1={xl} x2={xl} y1={y - 3.5} y2={y + 3.5} stroke="#334155" strokeWidth={1.5} />
@@ -691,10 +863,10 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
         {formatP(result.p)}
       </text>
       <text x={COL.treat + 60} y={pooledY + 4.5} fontSize={13.5} fontWeight={600} textAnchor="middle" fill="#1e293b" className="tabular">
-        {sum(inputs, "eT")} / {sum(inputs, "nT")}
+        {byEvents ? `${sum(inputs, "eT")} / ${sum(inputs, "nT")}` : sum(inputs, "nT")}
       </text>
       <text x={COL.ctrl + 60} y={pooledY + 4.5} fontSize={13.5} fontWeight={600} textAnchor="middle" fill="#1e293b" className="tabular">
-        {sum(inputs, "eC")} / {sum(inputs, "nC")}
+        {byEvents ? `${sum(inputs, "eC")} / ${sum(inputs, "nC")}` : sum(inputs, "nC")}
       </text>
       {/* Pooled Diamond */}
       <polygon

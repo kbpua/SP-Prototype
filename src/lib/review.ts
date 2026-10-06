@@ -7,14 +7,15 @@ import {
   type GradeLevel,
 } from "@/state/ReviewContext";
 import { parseRatioWithCi, type PooledResult, type StudyInput } from "./meta";
+import { OUTCOME_TYPE_LABELS, outcomeDataKey, type OutcomeMeasure } from "./effectMeasures";
 
 export type Verifications = Record<string, Partial<Record<FieldId, FieldVerification>>>;
 
-export function finalValues(study: CandidateStudy, verification: Verifications) {
+export function finalValues(study: CandidateStudy, verification: Verifications, resolvedOnly = false) {
   const out: Partial<Record<FieldId, string | null>> = {};
   if (!study.trial) return out;
   for (const f of getExtractedFields(study.trial)) {
-    out[f.def.id] = finalFieldValue(f.extracted, verification[study.id]?.[f.def.id]);
+    out[f.def.id] = finalFieldValue(f.extracted, verification[study.id]?.[f.def.id], resolvedOnly);
   }
   return out;
 }
@@ -24,29 +25,87 @@ function toInt(v: string | null | undefined) {
   return parseInt(v.replace(/[^\d]/g, ""), 10);
 }
 
-export function buildStudyInputs(studies: CandidateStudy[], verification: Verifications) {
+export const NO_HR_MESSAGE = "No hazard ratio extracted: not pooled";
+
+function parseMeanSd(v: string | null | undefined) {
+  const nums = v?.match(/-?\d+(\.\d+)?/g)?.map(Number);
+  return nums && nums.length >= 2 ? { mean: nums[0], sd: nums[1] } : undefined;
+}
+
+function parsePair(v: string | null | undefined) {
+  const [a, b] = (v ?? "").split("/").map(toInt);
+  return { a, b };
+}
+
+/**
+ * Study inputs for one outcome, using the measure configured for it. A time-to-event outcome
+ * is pooled only from an extracted hazard ratio, never from crude event counts.
+ */
+export function buildStudyInputs(
+  studies: CandidateStudy[],
+  verification: Verifications,
+  resolvedOnly: boolean,
+  outcome: OutcomeMeasure | undefined,
+) {
   const inputs: StudyInput[] = [];
   const skipped: { study: CandidateStudy; reason: string }[] = [];
+  const key = outcome ? outcomeDataKey(outcome) : null;
   for (const s of studies) {
-    if (!s.trial) continue;
-    const v = finalValues(s, verification);
+    if (!s.trial || !outcome) continue;
+    if (!key) {
+      skipped.push({ study: s, reason: "No mock data for this outcome" });
+      continue;
+    }
+    const v = finalValues(s, verification, resolvedOnly);
+    const sae = parsePair(v.sae);
     const input: StudyInput = {
       id: s.id,
       label: s.trial.acronym,
       year: s.year,
       nT: toInt(v.nT),
       nC: toInt(v.nC),
-      eT: toInt(v.eT),
-      eC: toInt(v.eC),
-      hr: v.hr ? parseRatioWithCi(v.hr) : undefined,
+      eT: key === "sae" ? sae.a : toInt(v.eT),
+      eC: key === "sae" ? sae.b : toInt(v.eC),
     };
-    if ([input.nT, input.nC, input.eT, input.eC].some((n) => !Number.isFinite(n))) {
-      skipped.push({ study: s, reason: "Outcome counts rejected during verification" });
+    if (!Number.isFinite(input.nT) || !Number.isFinite(input.nC)) {
+      skipped.push({ study: s, reason: "Sample sizes rejected or unresolved" });
+      continue;
+    }
+    if (outcome.measure === "HR") {
+      input.hr = key === "trialPrimary" && v.hr ? parseRatioWithCi(v.hr) : undefined;
+      if (!input.hr) {
+        skipped.push({ study: s, reason: NO_HR_MESSAGE });
+        continue;
+      }
+    } else if (outcome.measure === "MD") {
+      const t = key === "trialPrimary" ? parseMeanSd(v.mdT) : undefined;
+      const c = key === "trialPrimary" ? parseMeanSd(v.mdC) : undefined;
+      if (!t || !c) {
+        skipped.push({ study: s, reason: "No means and SDs extracted: not pooled" });
+        continue;
+      }
+      input.md = { meanT: t.mean, sdT: t.sd, meanC: c.mean, sdC: c.sd };
+    } else if (!Number.isFinite(input.eT) || !Number.isFinite(input.eC)) {
+      skipped.push({ study: s, reason: "Event counts rejected or unresolved" });
       continue;
     }
     inputs.push(input);
   }
   return { inputs, skipped };
+}
+
+/** Annex 8 "Findings" text for one outcome, built from the values its measure uses. */
+export function outcomeFindings(v: Partial<Record<FieldId, string | null>>, outcome: OutcomeMeasure) {
+  const val = (id: FieldId) => v[id] ?? "—";
+  const key = outcomeDataKey(outcome);
+  if (key === "sae") {
+    const { a, b } = parsePair(v.sae);
+    return `events ${Number.isFinite(a) ? a : "—"}/${val("nT")} vs ${Number.isFinite(b) ? b : "—"}/${val("nC")}`;
+  }
+  if (key !== "trialPrimary") return "—";
+  if (outcome.measure === "HR") return `HR ${val("hr")}; p ${val("p")}`;
+  if (outcome.measure === "MD") return `mean (SD) ${val("mdT")}, n ${val("nT")} vs ${val("mdC")}, n ${val("nC")}`;
+  return `events ${val("eT")}/${val("nT")} vs ${val("eC")}/${val("nC")}; p ${val("p")}`;
 }
 
 export type RobOverall = { label: string; tone: "default" | "amber" | "coral" | "neutral" };
@@ -125,30 +184,42 @@ export const ANNEX8_EXTENSIONS = [
   { key: "ext_overall_risk_of_bias", label: "Overall risk of bias" },
   { key: "ext_verification_status", label: "Verification status" },
   { key: "ext_source_pages", label: "Source page per field" },
+  { key: "ext_stakeholder_tag", label: "Stakeholder tag (rule-based)" },
+  { key: "ext_resolution_status", label: "Resolution status" },
+  { key: "ext_reviewer_agreement", label: "Reviewer agreement (extraction)" },
+  { key: "ext_effect_measure", label: "Effect measure" },
+  { key: "ext_outcome_type", label: "Outcome type" },
 ] as const;
 
-const ANNEX8_SOURCE_FIELDS: { col: string; id: FieldId }[] = [
-  { col: "Country", id: "country" },
-  { col: "Design", id: "design" },
-  { col: "Population", id: "population" },
-  { col: "Intervention", id: "intervention" },
-  { col: "Comparator", id: "comparator" },
-  { col: "Outcomes", id: "primaryOutcome" },
-  { col: "Findings", id: "eT" },
-];
+function findingsSourceField(outcome: OutcomeMeasure): FieldId {
+  if (outcomeDataKey(outcome) === "sae") return "sae";
+  return outcome.measure === "HR" ? "hr" : outcome.measure === "MD" ? "mdT" : "eT";
+}
 
-/** One Annex 8 row (eight Guide columns + extension fields) built from verified extraction values. */
+/** One Annex 8 row per study and extracted outcome (eight Guide columns + extension fields), resolved values only. */
 export function annex8Row(
   study: CandidateStudy,
   verification: Verifications,
   appraisal: Record<string, Record<string, DomainAssessment>>,
   activeIds: Set<FieldId>,
+  outcome: OutcomeMeasure,
+  extra: { stakeholderTags: string; resolution: string; agreement: string },
 ) {
-  const v = finalValues(study, verification);
+  const v = finalValues(study, verification, true);
   const val = (id: FieldId) => v[id] ?? "—";
   const fields = study.trial ? getExtractedFields(study.trial) : [];
   const sourceOf = (id: FieldId) => fields.find((f) => f.def.id === id)?.def.source ?? "—";
-  const verified = [...activeIds].filter((id) => (verification[study.id]?.[id]?.status ?? "pending") !== "pending").length;
+  const verified = [...activeIds].filter((id) => verification[study.id]?.[id]).length;
+  const isSae = outcomeDataKey(outcome) === "sae";
+  const sources: { col: string; id: FieldId }[] = [
+    { col: "Country", id: "country" },
+    { col: "Design", id: "design" },
+    { col: "Population", id: "population" },
+    { col: "Intervention", id: "intervention" },
+    { col: "Comparator", id: "comparator" },
+    ...(isSae ? [] : [{ col: "Outcomes", id: "primaryOutcome" as FieldId }]),
+    { col: "Findings", id: findingsSourceField(outcome) },
+  ];
 
   const annex8: string[] = [
     `${study.authors.split(",")[0]}, ${study.year}`,
@@ -157,8 +228,8 @@ export function annex8Row(
     v.lvef ? `${val("population")}; ${v.lvef}` : val("population"),
     val("intervention"),
     val("comparator"),
-    val("primaryOutcome"),
-    `events ${val("eT")}/${val("nT")} vs ${val("eC")}/${val("nC")}; reported HR ${val("hr")}`,
+    isSae ? outcome.outcomeName : val("primaryOutcome"),
+    outcomeFindings(v, outcome),
   ];
   const extensions: string[] = [
     val("randomized"),
@@ -166,8 +237,13 @@ export function annex8Row(
     val("registration"),
     val("funding"),
     robOverall(appraisal[study.id]).label,
-    `${verified}/${activeIds.size} fields verified`,
-    ANNEX8_SOURCE_FIELDS.map((f) => `${f.col}: ${sourceOf(f.id)}`).join("; "),
+    `${verified}/${activeIds.size} fields resolved`,
+    sources.map((f) => `${f.col}: ${sourceOf(f.id)}`).join("; "),
+    extra.stakeholderTags,
+    extra.resolution,
+    extra.agreement,
+    `${outcome.measure}${outcome.isPrimary ? " (primary outcome)" : ""}`,
+    OUTCOME_TYPE_LABELS[outcome.type],
   ];
   return { annex8, extensions };
 }

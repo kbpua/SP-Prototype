@@ -1,6 +1,10 @@
 // All data in this file is fictional and exists only to drive the prototype UI.
 // Trial names, authors, registrations, and numbers do not refer to real studies.
 
+import { PROTOTYPE_CONFIG } from "@/config/prototypeConfig";
+
+const SR_SUPPORTED = PROTOTYPE_CONFIG.showOutOfScopeMocks;
+
 export type StudyDesign =
   | "RCT"
   | "Cohort"
@@ -18,9 +22,9 @@ export const STUDY_DESIGNS: StudyDesign[] = [
   "Other",
 ];
 
-/** Designs the RCT-only pipeline can carry forward (SRs are appraised only). */
+/** Designs the RCT-only pipeline can carry forward (SRs only when the out-of-scope mocks are shown). */
 export function isSupportedDesign(d: StudyDesign) {
-  return d === "RCT" || d === "Systematic review";
+  return d === "RCT" || (SR_SUPPORTED && d === "Systematic review");
 }
 
 export type IneligibilityCode = "P" | "I" | "C" | "O" | "S" | "Other";
@@ -77,6 +81,8 @@ export interface TrialData {
   p: string;
   saeT: number;
   saeC: number;
+  /** Primary outcome as mean (SD) per arm; only for trials reporting a continuous primary outcome. */
+  continuous?: { meanT: number; sdT: number; meanC: number; sdC: number };
   metrics: { precision: number; recall: number; f1: number; kappa: number };
   /** Fields where the mock extractor is uncertain or wrong. */
   overrides: Partial<Record<FieldId, { extracted?: string; confidence: Confidence }>>;
@@ -145,6 +151,8 @@ export type FieldId =
   | "eT"
   | "eC"
   | "hr"
+  | "mdT"
+  | "mdC"
   | "p"
   | "sae";
 
@@ -423,6 +431,30 @@ export const EXTRACTION_FIELDS: FieldDef[] = [
     value: (t) => t.hr,
   },
   {
+    id: "mdT",
+    label: "Primary outcome mean (SD), treatment",
+    group: "Outcomes",
+    schemas: [
+      { key: "annex8", item: "A8 · Results" },
+      { key: "consort", item: "17a" },
+    ],
+    source: "Table 2",
+    defaultConfidence: "low",
+    value: (t) => (t.continuous ? `${t.continuous.meanT} (${t.continuous.sdT})` : "Not reported"),
+  },
+  {
+    id: "mdC",
+    label: "Primary outcome mean (SD), control",
+    group: "Outcomes",
+    schemas: [
+      { key: "annex8", item: "A8 · Results" },
+      { key: "consort", item: "17a" },
+    ],
+    source: "Table 2",
+    defaultConfidence: "low",
+    value: (t) => (t.continuous ? `${t.continuous.meanC} (${t.continuous.sdC})` : "Not reported"),
+  },
+  {
     id: "p",
     label: "p-value (primary outcome)",
     group: "Outcomes",
@@ -470,7 +502,7 @@ export function getExtractedFields(trial: TrialData): ExtractedField[] {
 // ---------------------------------------------------------------------------
 
 const hfrefPopulation =
-  "Adults ≥18 years with symptomatic chronic HFrEF (NYHA class II–IV) on guideline-directed medical therapy";
+  "Adults ≥18 years with symptomatic chronic HFrEF (NYHA class II–IV) on guideline-directed medical therapy, including older adults aged ≥75 years";
 
 export const CANDIDATE_STUDIES: CandidateStudy[] = [
   {
@@ -628,7 +660,9 @@ export const CANDIDATE_STUDIES: CandidateStudy[] = [
     abstract:
       "We searched four databases and pooled 13 RCTs (n = 29,450) of SGLT2 inhibitors in adults with HFrEF. SGLT2 inhibitors reduced cardiovascular death or HF hospitalisation (RR 0.77; 95% CI 0.72–0.82) with low heterogeneity; risk of bias was assessed with RoB 2…",
     relevance: 0.86,
-    suggested: { decision: "include" },
+    suggested: SR_SUPPORTED
+      ? { decision: "include" }
+      : { decision: "exclude", reason: "Wrong study design", code: "S" },
   },
   {
     id: "s10",
@@ -807,7 +841,9 @@ export const SCREENING_RATIONALES: Record<string, string> = {
   s06: "RCT in adults ≥ 70 years with HFrEF, but dapagliflozin is compared with empagliflozin rather than placebo or standard care; head-to-head SGLT2 comparisons are listed under exclusion criteria.",
   s07: "Intervention, comparator and outcome match, but the population has LVEF > 40% (HFmrEF/HFpEF), outside the HFrEF criterion. Check whether an HFrEF subgroup is reported.",
   s08: "Population and intervention match, but the comparator is another SGLT2 inhibitor (empagliflozin) rather than placebo or standard care; head-to-head designs are listed under exclusion criteria.",
-  s09: "Systematic review and meta-analysis of RCTs of SGLT2 inhibitors in HFrEF reporting CV death or HF hospitalisation; the PICO elements match. Tagged as a systematic review, so it is routed to AMSTAR 2 appraisal.",
+  s09: SR_SUPPORTED
+    ? "Systematic review and meta-analysis of RCTs of SGLT2 inhibitors in HFrEF reporting CV death or HF hospitalisation; the PICO elements match. Tagged as a systematic review, so it is routed to AMSTAR 2 appraisal."
+    : "Systematic review and meta-analysis of RCTs of SGLT2 inhibitors in HFrEF; the PICO elements match, but a systematic review is not a randomised controlled trial, so the study-design criterion is not met.",
   s18: "RCT design, HFrEF population and outcome match, but the intervention is empagliflozin, not dapagliflozin. Relevant only if the question is widened to the SGLT2-inhibitor class.",
   s10: "Relevant Philippine population and intervention, but a retrospective observational cohort does not meet the RCT study-design criterion.",
   s11: "Addresses dapagliflozin in Philippine HFrEF patients, but this is a model-based economic evaluation (ICER per QALY), not a randomised trial; better suited to the economic evaluation workstream.",
