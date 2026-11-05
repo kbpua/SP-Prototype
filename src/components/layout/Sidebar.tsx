@@ -10,23 +10,18 @@ export function Sidebar() {
   const gatePassed = STAGES.map((_, i) => STAGES.slice(0, i + 1).every((st) => stageProgress[st.key] >= 100));
 
   return (
-    <aside className="flex w-16 lg:w-64 shrink-0 flex-col border-r border-line bg-white/70 backdrop-blur transition-[width] duration-200">
-      <div className="flex items-center justify-center lg:justify-start gap-3 px-3 lg:px-5 pt-4 pb-4">
-        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-700 text-white shadow-sm">
-          <svg viewBox="0 0 32 32" className="size-6">
-            <path
-              d="M6 17h5l2.5-7 3.5 13 2.5-6H26"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        <div className="leading-tight hidden lg:block min-w-0">
-          <div className="text-[14px] font-semibold text-ink truncate">HTA Evidence Synthesis</div>
-          <div className="text-[11.5px] text-ink-muted truncate">Philippine HTA Methods Guide</div>
+    <aside className="flex w-16 lg:w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white/80 backdrop-blur-md transition-[width] duration-200">
+      <div className="flex items-center justify-center gap-3 px-3 pt-4 pb-4 lg:justify-start lg:px-5">
+        <img
+          src="/sinag-logo.png"
+          alt="SINAG"
+          className="h-14 w-14 shrink-0 rounded-full object-cover shadow-sm ring-1 ring-slate-200"
+        />
+        <div className="hidden min-w-0 leading-tight lg:block">
+          <div className="font-bold text-slate-900">SINAG-HTA</div>
+          <div className="text-xs text-slate-500 whitespace-normal break-words">
+            Philippine HTA Evidence Platform
+          </div>
         </div>
       </div>
 
@@ -38,11 +33,11 @@ export function Sidebar() {
           className={({ isActive }) =>
             cn(
               "mb-3 flex items-center justify-center lg:justify-start gap-3 rounded-lg px-2 lg:px-3 py-2 text-[13.5px] font-medium transition-colors",
-              isActive ? "bg-brand-50 text-brand-800" : "text-ink-soft hover:bg-cream-dark/60 hover:text-ink",
+              isActive ? "bg-brand-50 text-brand-700" : "text-slate-800 hover:bg-cream-dark/60",
             )
           }
         >
-          <LayoutDashboard className="size-4 shrink-0" />
+          <LayoutDashboard className="size-4 shrink-0 text-brand-600" />
           <span className="hidden lg:inline truncate">Dashboard</span>
         </NavLink>
 
@@ -69,7 +64,7 @@ export function Sidebar() {
                   className={({ isActive }) =>
                     cn(
                       "group relative flex items-center lg:items-start justify-center lg:justify-start gap-3 rounded-lg px-2 lg:px-3 py-1.5 transition-colors",
-                      isActive ? "bg-brand-50" : "hover:bg-cream-dark/60",
+                      isActive ? "bg-brand-50 text-brand-700" : "hover:bg-cream-dark/60",
                     )
                   }
                 >
@@ -81,7 +76,7 @@ export function Sidebar() {
                           done
                             ? "border-brand-600 bg-brand-600 text-white"
                             : isActive
-                              ? "border-brand-600 bg-white text-brand-700 animate-pulse-ring"
+                              ? "border-brand-600 bg-white text-brand-600 animate-pulse-ring"
                               : "border-line bg-white text-ink-muted",
                         )}
                       >
@@ -90,22 +85,15 @@ export function Sidebar() {
                       <span className="min-w-0 flex-1 hidden lg:block">
                         <span
                           className={cn(
-                            "block text-[13.5px] font-medium leading-5 truncate",
-                            isActive ? "text-brand-800" : "text-ink",
+                            "block truncate text-[13.5px] font-medium leading-5 text-slate-800",
+                            isActive && "text-brand-700",
                           )}
                         >
                           {s.label}
                         </span>
-                        <span className="mt-0.5 flex items-center gap-2 text-[11.5px] text-ink-muted truncate">
-                          <span
-                            className={cn(
-                              s.mode === "human" && "text-[#9a5410] font-medium",
-                              s.mode === "hybrid" && "text-brand-700",
-                            )}
-                          >
-                            {MODE_LABEL[s.mode]}
-                          </span>
-                          {pct > 0 && pct < 100 && <span className="tabular">· {pct}%</span>}
+                        <span className="mt-0.5 flex items-center gap-2 truncate text-xs text-slate-500">
+                          <span>{MODE_LABEL[s.mode]}</span>
+                          {pct > 0 && pct < 100 && <span className="tabular-nums">· {pct}%</span>}
                         </span>
                       </span>
                     </>

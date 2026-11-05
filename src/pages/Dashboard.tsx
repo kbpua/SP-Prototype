@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
-import { PageHeader } from "@/components/PageHeader";
 import { STAGES } from "@/components/layout/stages";
 import { useReview } from "@/state/ReviewContext";
 import {
@@ -46,34 +45,44 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-      <PageHeader
-        title="Reviews in progress"
-        description="Systematic reviews supporting HTAC recommendations. Each review moves through screening, human appraisal, automated extraction with human verification, and synthesis."
-        actions={
-          <Button size="lg" className="whitespace-nowrap" onClick={() => navigate("/review/config")}>
-            <Plus />
-            New review
-          </Button>
-        }
-      />
+    <div className="mx-auto w-full max-w-[1600px] px-6 sm:px-8 lg:px-10 py-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-[11.5px] font-medium tracking-wide text-brand-700 uppercase">Welcome to</div>
+          <h1 className="mt-1 text-[28px] sm:text-[32px] font-bold tracking-tight text-ink">SINAG-HTA</h1>
+          <p className="mt-2 max-w-3xl text-[13.5px] leading-relaxed text-ink-soft italic">
+            Synthesis-oriented, Interactive, NER-driven, Analyst-verified, Guideline-aligned Health Technology
+            Assessment
+          </p>
+          <p className="mt-3 max-w-3xl text-[13.5px] leading-relaxed text-ink-muted">
+            Systematic reviews supporting HTAC recommendations. Each review moves through screening, human
+            appraisal, automated extraction with human verification, and synthesis.
+          </p>
+        </div>
+        <Button size="lg" className="shrink-0 whitespace-nowrap" onClick={() => navigate("/review/config")}>
+          <Plus />
+          New review
+        </Button>
+      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((s) => (
-          <Card key={s.label} className="px-4 sm:px-5 py-4 transition-all duration-200 hover:border-brand-200/80">
+          <Card key={s.label} className="bg-white px-5 py-4 transition-all duration-200 hover:border-brand-200/80">
             <div className="flex items-center justify-between text-[12.5px] text-ink-muted">
               <span className="truncate">{s.label}</span>
               <s.icon className="size-4 shrink-0 text-brand-600 ml-2" />
             </div>
-            <div className="mt-2 text-[26px] sm:text-[28px] font-semibold tracking-tight tabular text-ink">
+            <div className="mt-2 text-[26px] sm:text-[28px] font-semibold tracking-tight tabular-nums text-ink">
               <AnimatedNumber value={s.value} duration={1100} />
             </div>
           </Card>
         ))}
       </div>
 
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card className="col-span-1 lg:col-span-2 overflow-hidden border-brand-200">
+      <h2 className="mb-4 mt-8 text-[15px] font-bold tracking-tight text-ink">Reviews in progress</h2>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card className="col-span-1 overflow-hidden border-brand-200 bg-white lg:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-4 border-b border-brand-100/70 bg-brand-50/45 px-5 sm:px-6 pt-5 sm:pt-6 pb-5">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -92,7 +101,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-[30px] sm:text-[34px] font-semibold leading-none tracking-tight tabular text-brand-700">
+              <div className="text-[30px] sm:text-[34px] font-semibold leading-none tracking-tight tabular-nums text-brand-700">
                 <AnimatedNumber value={overall} />%
               </div>
               <div className="mt-1 text-[12px] text-ink-muted">complete</div>
@@ -126,7 +135,7 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        <Card>
+        <Card className="bg-white">
           <CardHeader>
             <CardTitle>Pipeline design</CardTitle>
             <CardDescription>Human-in-the-loop checkpoints are enforced between automated stages.</CardDescription>
@@ -152,9 +161,9 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {OTHER_REVIEWS.map((r) => (
-          <Card key={r.id} className="flex flex-col p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+          <Card key={r.id} className="flex flex-col bg-white p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[11.5px] text-ink-muted">{r.id}</span>
               <Badge variant={r.stage === "Completed" ? "solid" : r.stage === "Appraisal" ? "amber" : "default"}>
@@ -167,7 +176,7 @@ export default function Dashboard() {
                 <span>
                   {r.studies} records · {r.lead}
                 </span>
-                <span className="tabular font-medium text-ink-soft">{r.percent}%</span>
+                <span className="tabular-nums font-medium text-ink-soft">{r.percent}%</span>
               </div>
               <Progress value={r.percent} />
               <div className="mt-2.5 text-[11.5px] text-ink-muted">Last updated {r.updated}</div>
@@ -176,7 +185,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <Card className="mt-5">
+      <Card className="mt-6 bg-white">
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle>Extraction throughput</CardTitle>
@@ -196,19 +205,19 @@ export default function Dashboard() {
             <AreaChart data={THROUGHPUT} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
               <defs>
                 <linearGradient id="gExt" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#77c4a8" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#77c4a8" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#72c9c2" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#72c9c2" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#eee9dd" vertical={false} />
+              <CartesianGrid stroke="#e2e8f0" vertical={false} />
               <XAxis dataKey="week" tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
               <Tooltip
-                contentStyle={{ borderRadius: 10, border: "1px solid #e7e2d6", fontSize: 12.5 }}
-                cursor={{ stroke: "#abdcc9" }}
+                contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12.5 }}
+                cursor={{ stroke: "#a9e0db" }}
               />
-              <Area type="monotone" dataKey="extracted" name="Extracted" stroke="#43ab86" fill="url(#gExt)" strokeWidth={2} />
-              <Area type="monotone" dataKey="verified" name="Verified" stroke="#0f6e56" fill="transparent" strokeWidth={2.2} />
+              <Area type="monotone" dataKey="extracted" name="Extracted" stroke="#3fb3aa" fill="url(#gExt)" strokeWidth={2} />
+              <Area type="monotone" dataKey="verified" name="Verified" stroke="#239b92" fill="transparent" strokeWidth={2.2} />
             </AreaChart>
           </ResponsiveContainer>
         </CardContent>

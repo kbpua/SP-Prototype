@@ -56,10 +56,14 @@ export default function Appraisal() {
     return (
       <PageContainer className="pb-8">
         <PageHeader step="Stage 3 of 6" title="Critical appraisal" />
-        <Card className="py-16 text-center">
-          <ShieldCheck className="mx-auto size-10 text-brand-300" />
-          <div className="mt-3 text-[15px] font-medium text-ink">No studies included yet</div>
-          <p className="mt-1 text-[13px] text-ink-muted">Include studies during screening to appraise them here.</p>
+        <Card className="py-20 text-center">
+          <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-slate-100 text-slate-400">
+            <ShieldCheck className="size-7" />
+          </div>
+          <div className="mt-4 text-[15px] font-semibold text-ink">No studies included yet</div>
+          <p className="mx-auto mt-1.5 max-w-md text-[13px] text-ink-muted">
+            Include randomised trials during screening to appraise risk of bias here.
+          </p>
           <Button className="mt-5" variant="outline" onClick={() => navigate("/review/screening")}>
             <ArrowLeft /> Back to screening
           </Button>

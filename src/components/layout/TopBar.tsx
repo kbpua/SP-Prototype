@@ -19,12 +19,12 @@ export function TopBar() {
   const gatePassed = STAGES.map((_, i) => STAGES.slice(0, i + 1).every((st) => stageProgress[st.key] >= 100));
 
   return (
-    <header className="relative shrink-0 border-b border-line bg-white/80 backdrop-blur">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
       <div
         className="absolute inset-x-0 top-0 h-[3px] origin-left bg-brand-500 transition-transform duration-700 ease-out"
         style={{ transform: `scaleX(${inReview ? (currentIndex + 1) / STAGES.length : 0})` }}
       />
-      <div className="flex flex-col gap-1.5 px-4 sm:px-6 lg:px-8 py-2.5">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-1.5 px-6 sm:px-8 lg:px-10 py-2.5">
         {/* Row 1: Breadcrumb, review ID, status pill, guideline badge, Reset demo button */}
         <div className="flex items-center justify-between gap-4 min-w-0">
           <div className="flex min-w-0 items-center gap-2 text-[11.5px] text-ink-muted">
@@ -35,8 +35,16 @@ export function TopBar() {
                 </Link>
                 <span>/</span>
                 <span className="font-mono whitespace-nowrap">{ACTIVE_REVIEW_ID}</span>
-                <Badge variant="default" className="ml-1 tabular whitespace-nowrap">
-                  In progress · {overall}%
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "ml-1 tabular whitespace-nowrap border-transparent",
+                    overall >= 100
+                      ? "bg-brand-50 text-brand-800"
+                      : "bg-sky-50 text-sky-800",
+                  )}
+                >
+                  {overall >= 100 ? "Complete" : "In progress"} · {overall}%
                 </Badge>
                 <PrototypeBadge />
                 {/* Guideline badge: icon + tooltip below xl, full text at xl and above */}
@@ -84,14 +92,14 @@ export function TopBar() {
           <div className="min-w-0 flex-1">
             {inReview ? (
               <div
-                className="truncate text-[15px] font-semibold text-ink leading-tight"
+                className="truncate text-[15px] font-bold tracking-tight text-ink leading-tight"
                 title={config.title}
               >
                 {config.title}
               </div>
             ) : (
-              <div className="truncate text-[15px] font-semibold text-ink leading-tight">
-                Evidence synthesis workspace
+              <div className="truncate text-[15px] font-bold tracking-tight text-ink leading-tight">
+                SINAG-HTA Workspace
               </div>
             )}
           </div>
@@ -109,7 +117,7 @@ export function TopBar() {
                       className={cn(
                         "flex items-center gap-1.5 rounded-full px-2 py-0.5 xl:px-2.5 xl:py-1 text-[11.5px] xl:text-[12px] font-medium transition-all duration-300",
                         active
-                          ? "bg-brand-700 text-white shadow-sm"
+                          ? "bg-brand-600 text-white shadow-sm"
                           : done
                             ? "text-brand-700 hover:bg-brand-50"
                             : "text-ink-muted hover:bg-cream-dark/60",
@@ -149,7 +157,7 @@ export function TopBar() {
 
 function PrototypeBadge() {
   return (
-    <span className="shrink-0 whitespace-nowrap rounded border border-line bg-cream px-1.5 py-px text-[10.5px] font-medium text-ink-muted">
+    <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-medium text-slate-600">
       Prototype · simulated data
     </span>
   );

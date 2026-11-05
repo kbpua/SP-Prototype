@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowRight, ChevronDown, Info, Lock, Play, Sparkles, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowRight, ChevronDown, Info, Lock, Maximize2, Play, Sparkles, UserRound, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { PROTOTYPE_CONFIG } from "@/config/prototypeConfig";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,8 +82,23 @@ export default function Synthesis() {
   const [excludeHighRob, setExcludeHighRob] = useState(false);
   const [conformanceOpen, setConformanceOpen] = useState(true);
   const [runAnyway, setRunAnyway] = useState(false);
+  const [forestExpanded, setForestExpanded] = useState(false);
 
   useEffect(() => markVisited("synthesis"), [markVisited]);
+
+  useEffect(() => {
+    if (!forestExpanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setForestExpanded(false);
+    };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [forestExpanded]);
 
   const unresolved = fieldsResolved.total - fieldsResolved.resolved;
   const gateMode = PROTOTYPE_CONFIG.synthesisGate;
@@ -245,28 +260,38 @@ export default function Synthesis() {
       )}
 
       {result ? (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            <Card className="col-span-1 lg:col-span-2 border-brand-200 bg-brand-50/40 px-5 sm:px-6 py-5">
+        <div className="space-y-4">
+          {/* Top row · pooled estimate + heterogeneity */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card className="border-brand-200/80 bg-brand-50/40 px-5 sm:px-6 py-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-[12.5px] font-medium text-brand-800">
-                  Pooled {MEASURE_NAMES[measure].toLowerCase()} · random effects
+                  Pooled {MEASURE_NAMES[measure].toLowerCase()}
                 </div>
                 {gateMode === "warn" && unresolved > 0 && (
                   <Badge variant="amber" title={`${unresolved} field(s) have not been resolved`}>
-                    <AlertTriangle /> Preview: includes unverified values ({unresolved} unresolved)
+                    <AlertTriangle /> Preview
                   </Badge>
                 )}
               </div>
-              <div className="mt-1 flex flex-wrap items-baseline gap-3">
-                <span className="text-[36px] sm:text-[40px] font-semibold leading-none tracking-tight text-brand-700">
+              <div className="mt-2 flex flex-wrap items-center gap-2.5">
+                <span className="text-[36px] sm:text-[40px] font-semibold leading-none tracking-tight tabular-nums text-brand-700">
                   <AnimatedNumber value={result.est} digits={2} />
                 </span>
-                <span className="text-[15px] sm:text-[16px] tabular text-ink-soft whitespace-nowrap">
-                  95% CI {result.lo.toFixed(2)} to {result.hi.toFixed(2)}
-                </span>
+                {result.p < 0.05 && (
+                  <Badge
+                    variant="outline"
+                    className="border-transparent bg-white/80 text-[11px] font-medium text-brand-800 shadow-sm"
+                    title={`p ${formatP(result.p).startsWith("<") ? "" : "= "}${formatP(result.p)}`}
+                  >
+                    Statistically significant
+                  </Badge>
+                )}
               </div>
-              <p className="mt-2.5 text-[13.5px] leading-relaxed text-ink-soft">
+              <div className="mt-2 text-[14px] tabular text-ink-soft">
+                95% CI {result.lo.toFixed(2)} to {result.hi.toFixed(2)}
+              </div>
+              <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">
                 {single ? "From a single trial" : `Across ${k} trials`}, dapagliflozin was associated with{" "}
                 {ratio ? (
                   <b className="text-ink">
@@ -276,16 +301,16 @@ export default function Synthesis() {
                 ) : (
                   <b className="text-ink">a mean difference of {result.est.toFixed(2)}</b>
                 )}{" "}
-                for the primary outcome versus control (z = {result.z.toFixed(2)}, p{" "}
+                versus control (z = {result.z.toFixed(2)}, p{" "}
                 {formatP(result.p).startsWith("<") ? "" : "= "}
                 {formatP(result.p)}).
               </p>
-              <div className="mt-2 text-[12px] tabular text-ink-muted">
-                Based on {k} {k === 1 ? "study" : "studies"} · {resolvedUsed} resolved fields · {MEASURE_METHOD[measure]}
+              <div className="mt-2 text-[11.5px] tabular text-ink-muted">
+                {k} {k === 1 ? "study" : "studies"} · {resolvedUsed} resolved fields · {MEASURE_METHOD[measure]}
               </div>
             </Card>
 
-            <Card className="col-span-1 lg:col-span-2 px-5 sm:px-6 py-5">
+            <Card className="px-5 sm:px-6 py-5">
               <div className="flex items-center justify-between">
                 <div className="text-[12.5px] font-medium text-ink-soft">Heterogeneity</div>
                 {single ? (
@@ -296,7 +321,7 @@ export default function Synthesis() {
                   </Badge>
                 )}
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-4">
+              <div className="mt-4 grid grid-cols-3 gap-3">
                 <Stat label="I²" value={single ? "—" : `${result.i2.toFixed(1)}%`} />
                 <Stat label="τ²" value={single ? "—" : result.tau2.toFixed(4)} />
                 <Stat
@@ -305,48 +330,106 @@ export default function Synthesis() {
                   sub={single ? "Q df = 0" : `p = ${formatP(result.pQ)}`}
                 />
               </div>
+              <p className="mt-4 text-[12px] leading-relaxed text-ink-muted">
+                Random-effects model (DerSimonian–Laird). Heterogeneity statistics are not estimable when k = 1.
+              </p>
             </Card>
           </div>
 
-          <Card className="mt-5">
+          {/* Bottom row · full-width forest plot */}
+          <Card>
             <CardHeader className="flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <CardTitle>Forest plot — primary outcome</CardTitle>
                 <CardDescription>
                   {primaryOutcome?.outcomeName} · {MEASURE_NAMES[measure]} (random effects) · dapagliflozin vs control
                 </CardDescription>
               </div>
-              <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-soft whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-[#0f6e56]"
-                  checked={excludeHighRob}
-                  onChange={(e) => setExcludeHighRob(e.target.checked)}
-                />
-                Sensitivity: exclude high risk-of-bias trials
-                {highRobIds.size > 0 && <Badge variant="coral">{highRobIds.size}</Badge>}
-              </label>
+              <div className="flex shrink-0 flex-wrap items-center gap-3">
+                <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-soft whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[#239b92]"
+                    checked={excludeHighRob}
+                    onChange={(e) => setExcludeHighRob(e.target.checked)}
+                  />
+                  Sensitivity: exclude high risk-of-bias trials
+                  {highRobIds.size > 0 && <Badge variant="coral">{highRobIds.size}</Badge>}
+                </label>
+                {ratio && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => setForestExpanded(true)}
+                    title="Expand forest plot"
+                  >
+                    <Maximize2 className="size-3.5" />
+                    Expand
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               {ratio ? (
-                <div className="min-w-[640px]">
+                <div className="w-full min-w-[720px]">
                   <ForestPlot result={result} inputs={analysed} measure={measure} />
                 </div>
               ) : (
                 <div className="rounded-lg border border-dashed border-line py-8 text-center text-[12.5px] text-ink-muted">
-                  Mean-difference forest plot is not drawn in this prototype; see the pooled estimate above.
+                  Mean-difference forest plot is not drawn in this prototype; see the pooled estimate.
                 </div>
               )}
               {single && (
-                <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-ink-muted">
+                <div className="mt-1 flex items-center gap-1.5 text-[12px] text-ink-muted">
                   <Info className="size-3.5 shrink-0" />
-                  Single study: the pooled estimate equals the study estimate
+                  Single study: pooled estimate equals the study estimate
                   {measure === "HR" ? " (illustrative: pooled from the reported HR)." : "."}
                 </div>
               )}
             </CardContent>
           </Card>
-        </>
+
+          {forestExpanded && ratio && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm animate-fade-in"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Expanded forest plot"
+              onClick={() => setForestExpanded(false)}
+            >
+              <div
+                className="flex max-h-[92vh] w-[80vw] max-w-[1400px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200/80 px-5 py-3.5">
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-semibold text-ink">Forest plot — primary outcome</div>
+                    <div className="mt-0.5 truncate text-[12.5px] text-ink-muted">
+                      {primaryOutcome?.outcomeName} · {MEASURE_NAMES[measure]} (random effects)
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => setForestExpanded(false)}
+                    aria-label="Close expanded forest plot"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto p-5 scrollbar-thin">
+                  <div className="w-full min-w-[900px]">
+                    <ForestPlot result={result} inputs={analysed} measure={measure} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <Card className="py-16 text-center text-[13px] text-ink-muted">
           {blocked
@@ -620,7 +703,7 @@ export default function Synthesis() {
                     onClick={() => setGrade({ overall: grade.overall === c.value ? undefined : c.value })}
                     className={cn(
                       "cursor-pointer rounded-md px-3 py-1 text-[12.5px] font-medium transition-all",
-                      grade.overall === c.value ? "bg-brand-700 text-white shadow-sm" : "text-ink-muted hover:text-ink",
+                      grade.overall === c.value ? "bg-brand-600 text-white shadow-sm" : "text-ink-muted hover:text-ink",
                     )}
                   >
                     {c.label}
@@ -697,8 +780,8 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   return (
     <div>
       <div className="text-[12px] text-ink-muted">{label}</div>
-      <div className="text-[22px] font-semibold tabular text-ink">{value}</div>
-      {sub && <div className="text-[11.5px] tabular text-ink-muted">{sub}</div>}
+      <div className="text-[22px] font-semibold tabular-nums text-ink">{value}</div>
+      {sub && <div className="text-[11.5px] tabular-nums text-ink-muted">{sub}</div>}
     </div>
   );
 }
@@ -732,7 +815,15 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
   const arm = (e: number, n: number) => (byEvents ? `${e} / ${n}` : n.toLocaleString());
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full select-none font-sans" role="img" aria-label="Forest plot">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-auto w-full max-w-full select-none font-sans"
+      role="img"
+      aria-label="Forest plot"
+      preserveAspectRatio="xMidYMid meet"
+      shapeRendering="geometricPrecision"
+      textRendering="geometricPrecision"
+    >
       {/* Header */}
       <g fill="#64748b" fontSize={13} fontWeight={500}>
         <text x={COL.study} y={24}>Study</text>
@@ -772,7 +863,7 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
         x2={x(result.est)}
         y1={HEAD}
         y2={axisY}
-        stroke="#1d9e75"
+        stroke="#239b92"
         strokeWidth={1.2}
         strokeDasharray="3 4"
         style={{ transition: ease }}
@@ -800,7 +891,7 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
               fill={isHovered ? "#f2eee4" : i % 2 === 0 ? "#faf8f3" : "transparent"}
               className="transition-colors duration-150"
             />
-            <text x={COL.study} y={y + 4.5} fontSize={14} fontWeight={600} fill={isHovered ? "#0f6e56" : "#1e293b"}>
+            <text x={COL.study} y={y + 4.5} fontSize={14} fontWeight={600} fill={isHovered ? "#1c7d76" : "#1e293b"}>
               {s.label}
               <tspan fontWeight={400} fill="#64748b"> {s.year}</tspan>
             </text>
@@ -830,8 +921,8 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
               width={size}
               height={size}
               rx={1}
-              fill="#0f6e56"
-              stroke="#093f31"
+              fill="#239b92"
+              stroke="#104a46"
               strokeWidth={0.8}
               style={{ transition: ease }}
             />
@@ -847,7 +938,7 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
 
       {/* Pooled */}
       <line x1={0} x2={W} y1={pooledY - 20} y2={pooledY - 20} stroke="#e7e2d6" />
-      <text x={COL.study} y={pooledY - 1} fontSize={14} fontWeight={700} fill="#0c5643">
+      <text x={COL.study} y={pooledY - 1} fontSize={14} fontWeight={700} fill="#16635e">
         Random-effects model
       </text>
       <text x={COL.study} y={pooledY + 14} fontSize={11.5} fill="#64748b">
@@ -873,11 +964,11 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
         key={`${measure}-${result.est.toFixed(4)}`}
         className="animate-fade-in"
         points={`${x(result.lo)},${pooledY} ${x(result.est)},${pooledY - 12} ${x(result.hi)},${pooledY} ${x(result.est)},${pooledY + 12}`}
-        fill="#1d9e75"
-        stroke="#093f31"
+        fill="#239b92"
+        stroke="#104a46"
         strokeWidth={1.6}
       />
-      <text x={COL.est} y={pooledY + 4.5} fontSize={14} fontWeight={700} fill="#0c5643" className="tabular">
+      <text x={COL.est} y={pooledY + 4.5} fontSize={14} fontWeight={700} fill="#16635e" className="tabular">
         {result.est.toFixed(2)} [{result.lo.toFixed(2)}, {result.hi.toFixed(2)}]
       </text>
       <text x={COL.weight} y={pooledY + 4.5} fontSize={13.5} fontWeight={600} textAnchor="end" fill="#1e293b" className="tabular">
@@ -894,7 +985,7 @@ function ForestPlot({ result, inputs, measure }: { result: PooledResult; inputs:
           </text>
         </g>
       ))}
-      <text x={x(1) - 10} y={axisY + 42} fontSize={12.5} textAnchor="end" fill="#0f6e56" fontWeight={500}>
+      <text x={x(1) - 10} y={axisY + 42} fontSize={12.5} textAnchor="end" fill="#1c7d76" fontWeight={500}>
         ← Favours dapagliflozin
       </text>
       <text x={x(1) + 10} y={axisY + 42} fontSize={12.5} fill="#991b1b" fontWeight={500}>

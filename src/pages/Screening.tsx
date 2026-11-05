@@ -8,6 +8,7 @@ import {
   CircleHelp,
   Database,
   EyeOff,
+  Inbox,
   Info,
   Lock,
   Pencil,
@@ -193,7 +194,7 @@ export default function Screening() {
   const mine = reviewer ? "My " : "";
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pt-4 pb-6 lg:h-[calc(100dvh-var(--topbar-h))] lg:pb-4">
+    <div className="mx-auto w-full max-w-[1600px] px-6 sm:px-8 lg:px-10 pt-6 pb-6 lg:h-[calc(100dvh-var(--topbar-h))] lg:pb-4">
       <div className="grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)] gap-5 min-w-0 lg:h-full">
         <div className="col-span-1 lg:col-span-8 min-w-0 lg:min-h-0 lg:overflow-y-auto lg:pr-1.5 scrollbar-thin">
           <PageHeader
@@ -288,8 +289,18 @@ export default function Screening() {
               />
             ))}
             {list.length === 0 && (
-              <div className="rounded-xl border border-dashed border-line py-14 text-center text-[13px] text-ink-muted">
-                No records in this view.
+              <div className="rounded-xl border border-dashed border-slate-200 bg-white py-16 text-center shadow-card">
+                <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-400">
+                  <Inbox className="size-6" />
+                </div>
+                <div className="mt-3 text-[14px] font-semibold text-ink">
+                  {SCREENABLE_STUDIES.length === 0 ? "No records imported yet" : "No records in this view"}
+                </div>
+                <p className="mx-auto mt-1 max-w-sm text-[13px] text-ink-muted">
+                  {SCREENABLE_STUDIES.length === 0
+                    ? "Upload a RIS/CSV to begin title and abstract screening."
+                    : "Try another filter, or clear the current code filter."}
+                </p>
               </div>
             )}
           </div>
@@ -416,9 +427,9 @@ function StudyRow({
   return (
     <Card
       className={cn(
-        "relative overflow-hidden px-5 py-4 transition-all duration-200 hover:border-brand-200/80",
-        decision === "include" && "border-brand-300 bg-brand-50/40",
-        decision === "exclude" && "bg-cream/70 opacity-75 hover:opacity-100",
+        "relative overflow-hidden px-5 py-4 transition-all duration-200 hover:border-brand-200/60",
+        decision === "include" && "border-brand-300/80 bg-brand-50/40",
+        decision === "exclude" && "bg-slate-50/80 opacity-75 hover:opacity-100",
         decision === "maybe" && "border-flag/40",
         status === "conflict" && "border-coral/40 opacity-100",
       )}
@@ -438,7 +449,7 @@ function StudyRow({
         )}
       />
       <div className="flex gap-4 sm:gap-5">
-        <div className="w-32 min-w-[128px] shrink-0 pt-0.5">
+        <div className="w-40 min-w-[10rem] shrink-0 pt-0.5">
           {hidden ? (
             <div className="rounded-md border border-dashed border-line px-2 py-2 text-center text-[11px] leading-snug text-ink-muted">
               <EyeOff className="mx-auto mb-1 size-3.5" />
@@ -453,7 +464,7 @@ function StudyRow({
               <Progress value={study.relevance * 100} className="mt-1.5 h-1" barClassName={tone.bar} />
               <div
                 className={cn(
-                  "mt-2.5 rounded-md border px-2 py-1 text-center text-[11px] font-medium leading-tight whitespace-nowrap",
+                  "mt-2.5 inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-center text-[11px] font-medium leading-4 whitespace-nowrap",
                   REC_STYLE[rec_].cls,
                 )}
                 title="Derived from the relevance score — advisory only"
@@ -478,7 +489,7 @@ function StudyRow({
           <p className={cn("mt-2 text-[13px] leading-relaxed text-ink-soft", !open && "line-clamp-2")}>{study.abstract}</p>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
             <DesignChip study={study} value={design} onChange={onDesign} />
-            <Badge variant="outline">{study.source}</Badge>
+            <Badge variant="slate">{study.source}</Badge>
             {decision === "exclude" && shown?.code && (
               <span className="flex items-center gap-1 text-[11.5px] text-ink-muted">
                 <CodeBadge code={shown.code} />
@@ -780,18 +791,18 @@ function DesignChip({
   const changed = value !== study.design;
   return (
     <label
-      title={`${GUIDE_REFS.design}${study.designDetail ? ` Â· imported as ${study.designDetail}` : ""}${changed ? ` Â· imported as ${study.design}` : ""}`}
+      title={`${GUIDE_REFS.design}${study.designDetail ? ` · imported as ${study.designDetail}` : ""}${changed ? ` · imported as ${study.design}` : ""}`}
       className={cn(
-        "relative inline-flex cursor-pointer items-center gap-1 rounded-full border py-0.5 pr-1.5 pl-2 text-[11.5px] font-medium leading-4",
+        "relative inline-flex cursor-pointer items-center gap-1 rounded-full border py-0.5 pr-1.5 pl-2 text-xs font-medium leading-4",
         value === "RCT"
-          ? "border-brand-200 bg-brand-50 text-brand-800"
+          ? "border-brand-200/80 bg-brand-50 text-brand-800"
           : isSupportedDesign(value)
             ? "border-sky-200 bg-sky-50 text-sky-800"
-            : "border-flag/35 bg-flag-soft text-[#854408]",
+            : "border-flag/25 bg-flag-soft text-[#854408]",
       )}
     >
       <span className="text-[10.5px] font-normal opacity-70">Design</span>
-      <span>{value === "Other" && study.designDetail && !changed ? `Other Â· ${study.designDetail}` : value}</span>
+      <span>{value === "Other" && study.designDetail && !changed ? `Other · ${study.designDetail}` : value}</span>
       {changed && <UserRound className="size-3" />}
       <ChevronDown className="size-3 opacity-60" />
       <select
@@ -905,7 +916,7 @@ function DecisionButton({
       disabled={disabled}
       title={title}
       className={cn(
-        "flex h-7 w-[92px] shrink-0 whitespace-nowrap cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-all active:scale-95 disabled:cursor-not-allowed disabled:active:scale-100 [&_svg]:size-3.5",
+        "flex h-7 w-[92px] shrink-0 whitespace-nowrap cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:active:scale-100 [&_svg]:size-3.5",
         disabled && !active && "opacity-45",
         active
           ? activeCls

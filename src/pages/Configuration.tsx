@@ -73,7 +73,7 @@ function EffectMeasureCard() {
                 aria-label={`Primary outcome: ${o.outcomeName}`}
                 checked={o.isPrimary}
                 onChange={() => setOutcomeMeasure(o.outcomeId, { isPrimary: true })}
-                className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#0f6e56]"
+                className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#239b92]"
               />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

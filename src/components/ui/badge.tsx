@@ -4,17 +4,17 @@ import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11.5px] font-medium leading-4 whitespace-nowrap [&_svg]:size-3",
+  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium leading-4 whitespace-nowrap [&_svg]:size-3",
   {
     variants: {
       variant: {
-        default: "border-brand-200 bg-brand-50 text-brand-800",
-        solid: "border-transparent bg-brand-700 text-white",
-        neutral: "border-line bg-cream text-ink-soft",
-        amber: "border-flag/35 bg-flag-soft text-[#854408]",
-        coral: "border-coral/35 bg-coral-soft text-[#991b1b]",
-        slate: "border-line bg-cream-dark/50 text-ink-muted",
-        outline: "border-line bg-white text-ink-soft",
+        default: "border-brand-200/80 bg-brand-50 text-brand-700",
+        solid: "border-transparent bg-brand-600 text-white",
+        neutral: "border-transparent bg-slate-100 text-slate-600",
+        amber: "border-flag/25 bg-flag-soft text-[#854408]",
+        coral: "border-coral/25 bg-coral-soft text-[#991b1b]",
+        slate: "border-transparent bg-slate-100 text-slate-600",
+        outline: "border-line bg-white text-slate-600",
       },
     },
     defaultVariants: { variant: "default" },
@@ -55,8 +55,8 @@ export function ConfidenceBadge({
   }[confidence];
 
   return (
-    <Badge variant={config.variant} className={cn("gap-1.5 tabular", className)}>
-      <span className={cn("size-1.5 shrink-0 rounded-full", config.dot)} />
+    <Badge variant={config.variant} className={cn("gap-1.5 tabular-nums", className)}>
+      <span className={cn("size-1.5 shrink-0 rounded-full animate-confidence-pulse", config.dot)} />
       <span>{score !== undefined ? `${config.label} · ${Math.round(score * 100)}%` : config.label}</span>
     </Badge>
   );
@@ -72,13 +72,12 @@ export function ProvenanceBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border border-line bg-cream-dark/50 px-1.5 py-0.5 text-[11px] font-medium text-ink-soft",
+        "inline-flex items-center gap-1 rounded-full border-transparent bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600",
         className,
       )}
     >
-      <MapPin className="size-3 shrink-0 text-ink-muted" />
+      <MapPin className="size-3 shrink-0 text-slate-400" />
       <span>{source}</span>
     </span>
   );
 }
-

@@ -83,7 +83,7 @@ export default function Export() {
     effectMeasureLog,
     markVisited,
   } = useReview();
-  const [format, setFormat] = useState<Format>("json");
+  const [format, setFormat] = useState<Format>("annex8");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => markVisited("export"), [markVisited]);
@@ -405,14 +405,15 @@ export default function Export() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const name = {
-      json: "evidence-synthesis.json",
-      annex8: "annex8-extraction.csv",
-      csv: "annex8-extraction.csv",
-      audit: "audit-trail.json",
-      ineligibility: "ineligibility-log.csv",
+    const stamp = new Date().toISOString().slice(0, 10);
+    const suffix = {
+      json: "Package.json",
+      annex8: "Annex8.csv",
+      csv: "Annex8.csv",
+      audit: "Audit.json",
+      ineligibility: "Ineligibility.csv",
     }[fmt];
-    a.download = `${ACTIVE_REVIEW_ID}_${name}`;
+    a.download = `SINAG-HTA_Export_${stamp}_${suffix}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -444,7 +445,7 @@ export default function Export() {
 
       <Card className={cn("shrink-0 overflow-hidden", complete ? "border-brand-200" : "border-flag/40")}>
         {complete ? (
-          <div className="flex items-center gap-2.5 bg-brand-700 px-5 py-2 text-white">
+          <div className="flex items-center gap-2.5 bg-brand-600 px-5 py-2 text-white">
             <PartyPopper className="size-4 shrink-0" />
             <div className="min-w-0 truncate text-[12.5px] text-brand-100">
               <span className="text-[13.5px] font-semibold text-white">Pipeline complete</span>
@@ -473,7 +474,7 @@ export default function Export() {
                 <ChevronRight className="hidden md:block absolute top-1/2 -translate-y-1/2 -right-2.5 size-4 text-brand-300" />
               )}
               <div className="text-[11.5px] font-medium text-ink-muted">{f.label}</div>
-              <div className="mt-0.5 text-[24px] font-semibold leading-none tracking-tight tabular text-brand-700">
+              <div className="mt-0.5 text-[24px] font-semibold leading-none tracking-tight tabular-nums text-brand-700">
                 <AnimatedNumber value={f.value} duration={600 + i * 150} />
               </div>
               <div className="mt-1 max-w-full truncate text-[11.5px] text-ink-soft">{f.sub}</div>
@@ -520,7 +521,7 @@ export default function Export() {
           ) : (
             <pre
               key={format}
-              className="min-h-0 flex-1 animate-fade-in overflow-auto whitespace-pre-wrap break-words bg-[#10231d] px-5 py-4 font-mono text-[12px] leading-relaxed text-brand-100 scrollbar-thin"
+              className="min-h-0 flex-1 animate-fade-in overflow-auto whitespace-pre-wrap break-words bg-[#0c2f2c] px-5 py-4 font-mono text-[12px] leading-relaxed text-brand-100 scrollbar-thin"
             >
               {format === "csv" ? content : <Highlighted json={content} />}
             </pre>
@@ -536,7 +537,7 @@ export default function Export() {
             <CardContent className="space-y-2 pb-4">
               <DownloadRow
                 icon={FileJson}
-                title="Evidence synthesis package"
+                title="SINAG-HTA evidence package"
                 meta={showOos ? "JSON · PRISMA, fields, meta-analysis, GRADE" : "JSON · PRISMA, fields, agreement, tags"}
                 onClick={() => download("json")}
               />
@@ -578,8 +579,11 @@ export default function Export() {
                 `Random-effects meta-analysis (${measure}, primary outcome)`,
                 ...(showOos ? ["GRADE certainty (analyst-entered)"] : []),
               ].map((t) => (
-                <li key={t} className="flex items-center gap-2">
-                  <Check className="size-3.5 shrink-0 text-brand-600" strokeWidth={3} /> {t}
+                <li key={t} className="flex items-start gap-2.5">
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-700">
+                    <Check className="size-2.5" strokeWidth={3.5} />
+                  </span>
+                  <span>{t}</span>
                 </li>
               ))}
             </ul>

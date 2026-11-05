@@ -17,6 +17,8 @@ import {
   Trash2,
   Undo2,
   UserRound,
+  GripVertical,
+  Inbox,
   Wand2,
   X,
 } from "lucide-react";
@@ -122,6 +124,10 @@ export default function Extraction() {
   const [filter, setFilter] = useState<FieldFilter>("all");
   const [editing, setEditing] = useState<FieldId | undefined>();
   const [phase, setPhase] = useState(PIPELINE_STEPS.length);
+  /** Left pane width as a percent of the split row (xl+). */
+  const [leftPct, setLeftPct] = useState(48);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
 
   const reviewer = role === "adjudicator" ? null : role;
   const resolverHere = canResolve(role);
@@ -308,14 +314,36 @@ export default function Extraction() {
     return () => window.removeEventListener("keydown", onKey);
   }, [active, visibleFields, revealed, doc, act, selectFromForm]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current || !splitRef.current) return;
+      const rect = splitRef.current.getBoundingClientRect();
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      setLeftPct(Math.min(68, Math.max(32, pct)));
+    };
+    const onUp = () => {
+      dragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
   if (!doc || !doc.trial) {
     return (
-      <div className="mx-auto max-w-[1120px] px-8 py-8">
+      <div className="mx-auto w-full max-w-[1600px] px-6 sm:px-8 lg:px-10 py-8">
         <PageHeader step="Stage 4 of 6" title="Extraction & verification" />
-        <Card className="py-16 text-center">
-          <ScanText className="mx-auto size-10 text-brand-300" />
-          <div className="mt-3 text-[15px] font-medium text-ink">No trial reports to extract</div>
-          <p className="mt-1 text-[13px] text-ink-muted">
+        <Card className="py-20 text-center">
+          <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-slate-100 text-slate-400">
+            <Inbox className="size-7" />
+          </div>
+          <div className="mt-4 text-[15px] font-semibold text-ink">No trial reports to extract</div>
+          <p className="mx-auto mt-1.5 max-w-md text-[13px] text-ink-muted">
             Only the resolved included set reaches extraction. Include randomised trials during screening to extract data here.
           </p>
           <Button className="mt-5" variant="outline" onClick={() => navigate("/review/screening")}>
@@ -334,7 +362,7 @@ export default function Extraction() {
   const docDone = docStats(doc);
 
   return (
-    <div className="mx-auto flex max-w-[1560px] flex-col px-4 sm:px-6 lg:px-8 py-6 lg:py-8 xl:h-[calc(100dvh-var(--topbar-h))] xl:py-4">
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col px-6 sm:px-8 lg:px-10 py-6 lg:py-8 xl:h-[calc(100dvh-var(--topbar-h))] xl:py-4">
       <PageHeader
         className="shrink-0 pb-3 [&_p]:mt-1 [&_p]:truncate"
         step="Stage 4 of 6 · Core module"
@@ -416,7 +444,7 @@ export default function Extraction() {
                 </div>
               )}
             </div>
-            <div className="shrink-0 text-[20px] font-semibold leading-none tabular text-ink">
+            <div className="shrink-0 text-[20px] font-semibold leading-none tabular-nums text-ink">
               <AnimatedNumber value={committed} />
               <span className="text-[14px] font-normal text-ink-muted">/{fields.length}</span>
             </div>
@@ -424,21 +452,21 @@ export default function Extraction() {
           </div>
           <div className="flex items-center gap-3 px-4 xl:px-5 py-2">
             <div className="shrink-0 text-[11.5px] text-ink-muted">Model confidence</div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] tabular text-ink-soft">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] tabular-nums text-ink-soft">
               <span>
-                <span className="text-[18px] font-semibold text-brand-700">{confidenceCounts.high}</span> high
+                <span className="text-[18px] font-semibold tabular-nums text-brand-700">{confidenceCounts.high}</span> high
               </span>
               <span className="text-ink-muted">·</span>
               <span>
-                <span className="text-[18px] font-semibold text-[#b45309]">{confidenceCounts.medium}</span> medium
+                <span className="text-[18px] font-semibold tabular-nums text-[#b45309]">{confidenceCounts.medium}</span> medium
               </span>
               <span className="text-ink-muted">·</span>
               <span className="flex items-center gap-1.5">
                 <span>
-                  <span className="text-[18px] font-semibold text-coral">{confidenceCounts.low}</span> low
+                  <span className="text-[18px] font-semibold tabular-nums text-coral">{confidenceCounts.low}</span> low
                 </span>
                 {confidenceCounts.low > 0 && (
-                  <span className="whitespace-nowrap rounded border border-coral/40 bg-coral-soft px-1.5 py-px text-[10.5px] font-medium text-coral">
+                  <span className="whitespace-nowrap rounded-full bg-coral-soft px-2 py-0.5 text-xs font-medium text-coral">
                     review first
                   </span>
                 )}
@@ -448,11 +476,17 @@ export default function Extraction() {
         </Card>
       </div>
 
-      {/* Split pane */}
-      <div className="grid grid-cols-1 gap-4 xl:min-h-[280px] xl:flex-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)] xl:grid-rows-[minmax(0,1fr)]">
+      {/* Split pane — resizable on xl+ */}
+      <div
+        ref={splitRef}
+        className="flex min-h-0 flex-col gap-0 xl:min-h-[280px] xl:flex-1 xl:flex-row"
+      >
         {/* Left: document */}
-        <Card className="relative flex h-[75vh] min-h-[520px] flex-col overflow-hidden bg-[#eeebe3] xl:h-auto xl:min-h-0">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-white/90 px-4 py-2.5">
+        <Card
+          className="relative flex h-[75vh] min-h-[520px] w-full flex-col overflow-hidden bg-[#eeebe3] max-xl:!flex-auto xl:h-auto xl:min-h-0"
+          style={{ flex: `0 0 ${leftPct}%` }}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
             <div className="flex min-w-0 items-center gap-2 text-[12.5px]">
               <FileText className="size-4 shrink-0 text-coral" />
               <span className="truncate font-medium text-ink">
@@ -520,46 +554,68 @@ export default function Extraction() {
           )}
         </Card>
 
+        {/* Draggable divider */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panes"
+          title="Drag to resize"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            dragging.current = true;
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          }}
+          className="group relative hidden w-3 shrink-0 cursor-col-resize items-stretch justify-center xl:flex"
+        >
+          <span className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 bg-slate-200 transition-colors group-hover:bg-brand-400 group-active:bg-brand-500" />
+          <span className="absolute top-1/2 left-1/2 z-10 flex h-8 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 shadow-sm transition-colors group-hover:border-brand-300 group-hover:text-brand-600">
+            <GripVertical className="size-3.5" />
+          </span>
+        </div>
+
         {/* Right: fields */}
-        <Card className="flex h-[75vh] min-h-[520px] flex-col overflow-hidden xl:h-auto xl:min-h-0">
-          <div className="shrink-0 border-b border-line px-4 py-2.5">
-            <div className="flex items-center justify-between gap-3">
+        <Card className="mt-4 flex h-[75vh] min-h-[520px] min-w-0 flex-1 flex-col overflow-hidden xl:mt-0 xl:h-auto xl:min-h-0">
+          <div className="shrink-0 border-b border-slate-200/80 bg-white px-4 pt-2.5">
+            <div className="flex items-center justify-between gap-3 pb-2">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <div className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink" title={doc.title}>{doc.title}</div>
                 <div className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-ink-muted">
                   Schema:
                   {enabledSchemas.map((k) => (
-                    <Badge key={k} variant="neutral" className="text-[10.5px]">
+                    <Badge key={k} variant="slate" className="text-[10.5px]">
                       {SCHEMA_LABELS[k]}
                     </Badge>
                   ))}
                 </div>
               </div>
             </div>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <Segmented<FieldFilter>
-                className="shrink-0 whitespace-nowrap"
+          </div>
+
+          {/* Sticky filter bar — stays visible while fields scroll */}
+          <div className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur-sm">
+            <Segmented<FieldFilter>
+              className="shrink-0 whitespace-nowrap"
+              size="sm"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: "all", label: `All ${fields.length}` },
+                { value: "attention", label: `Needs attention ${attention}` },
+                { value: "pending", label: `Pending ${fields.length - committed}` },
+                { value: "conflicts", label: `Conflicts ${conflictSet.size}` },
+              ]}
+            />
+            {reviewer && (
+              <Button
                 size="sm"
-                value={filter}
-                onChange={setFilter}
-                options={[
-                  { value: "all", label: `All ${fields.length}` },
-                  { value: "attention", label: `Needs attention ${attention}` },
-                  { value: "pending", label: `Pending ${fields.length - committed}` },
-                  { value: "conflicts", label: `Conflicts ${conflictSet.size}` },
-                ]}
-              />
-              {reviewer && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!revealed || highPending === 0}
-                  onClick={() => acceptHighConfidence([doc.id])}
-                >
-                  <CheckCheck /> Accept {highPending} high-confidence
-                </Button>
-              )}
-            </div>
+                variant="secondary"
+                disabled={!revealed || highPending === 0}
+                onClick={() => acceptHighConfidence([doc.id])}
+              >
+                <CheckCheck /> Accept {highPending} high-confidence
+              </Button>
+            )}
           </div>
 
           <div ref={fieldPaneRef} className="relative min-h-0 flex-1 overflow-y-auto px-4 py-3 scrollbar-thin">
@@ -691,7 +747,7 @@ export default function Extraction() {
 function Legend({ cls, label }: { cls: string; label: string }) {
   return (
     <span className="flex items-center gap-1">
-      <span className={cn("size-2.5 rounded-[2px] ring-[1.5px]", cls)} />
+      <span className={cn("size-2.5 rounded-[2px] ring-[1.5px] animate-confidence-pulse", cls)} />
       {label}
     </span>
   );
@@ -776,10 +832,10 @@ function FieldRow({
       className={cn(
         "animate-stage-in cursor-pointer rounded-lg border px-3.5 py-3 transition-all duration-200",
         active
-          ? "border-brand-500 bg-brand-50/40 shadow-sm ring-2 ring-brand-500/15"
+          ? "border-brand-300 border-l-4 border-l-brand-600 bg-brand-50/40 shadow-card ring-1 ring-brand-500/15"
           : hovered
-            ? "border-brand-300 bg-white"
-            : "border-line bg-white",
+            ? "border-brand-200 bg-slate-50/80 shadow-card"
+            : "border-line/70 bg-white shadow-sm hover:bg-slate-50/50",
         dual === "conflict" && !active && "border-coral/40 bg-coral-soft/15",
         dual !== "conflict" && status === "accepted" && !active && "border-brand-200 bg-brand-50/30",
         dual !== "conflict" && status === "corrected" && !active && "border-sky-200 bg-sky-50/40 animate-flash",
@@ -789,7 +845,7 @@ function FieldRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-ink-muted">{field.def.label}</div>
+          <div className="text-[11px] font-medium tracking-wide text-slate-500">{field.def.label}</div>
           {editing ? (
             <form
               className="mt-1.5 flex items-center gap-1.5"
@@ -804,7 +860,7 @@ function FieldRow({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => e.key === "Escape" && onEdit(false)}
-                className="h-8 text-[13.5px] font-medium"
+                className="h-8 text-[14px] font-semibold"
               />
               <Button type="submit" size="sm">
                 Save
@@ -816,14 +872,14 @@ function FieldRow({
           ) : (
             <div
               className={cn(
-                "mt-0.5 text-[14px] font-semibold leading-snug text-ink",
-                status === "rejected" && "text-slate-400 line-through",
+                "mt-1 text-[15px] font-bold leading-snug tracking-tight text-slate-900",
+                status === "rejected" && "font-semibold text-slate-400 line-through",
               )}
             >
               {status === "corrected" ? (
                 <>
                   <span className="text-sky-800">{final}</span>
-                  <span className="ml-2 text-[12px] font-normal text-ink-muted line-through">{field.extracted}</span>
+                  <span className="ml-2 text-[12px] font-normal text-slate-400 line-through">{field.extracted}</span>
                 </>
               ) : (
                 field.extracted
@@ -851,7 +907,10 @@ function FieldRow({
           {field.def.schemas
             .filter((s) => enabledSchemas.includes(s.key))
             .map((s) => (
-              <span key={s.key} className="rounded-md border border-line bg-white px-1.5 py-0.5 text-[10.5px] text-ink-muted">
+              <span
+                key={s.key}
+                className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+              >
                 {s.key === "annex8" ? s.item : `${SCHEMA_LABELS[s.key]} ${s.item}`}
               </span>
             ))}

@@ -18,6 +18,12 @@ import { cn } from "@/lib/utils";
 
 const ROLES: Role[] = ["A", "B", "adjudicator"];
 
+const ROLE_AVATAR: Record<Role, { initials: string; tone: string }> = {
+  A: { initials: "A", tone: "bg-sky-100 text-sky-700" },
+  B: { initials: "B", tone: "bg-violet-100 text-violet-700" },
+  adjudicator: { initials: "Ad", tone: "bg-amber-100 text-amber-800" },
+};
+
 export const LIMITATION_NOTE = "Third-reviewer escalation and appraisal-stage dual review are not implemented.";
 
 export function otherReviewer(r: ReviewerId): ReviewerId {
@@ -40,21 +46,32 @@ export function RoleSwitcher() {
         className="inline-flex rounded-lg border border-line bg-cream p-0.5"
         title="Reviewer roles apply to screening and extraction"
       >
-        {ROLES.map((r) => (
-          <button
-            key={r}
-            type="button"
-            role="radio"
-            aria-checked={role === r}
-            onClick={() => setRole(r)}
-            className={cn(
-              "cursor-pointer whitespace-nowrap rounded-md px-2 py-0.5 text-[11.5px] font-medium transition-all",
-              role === r ? "bg-white text-brand-800 shadow-sm" : "text-ink-muted hover:text-ink",
-            )}
-          >
-            {ROLE_LABELS[r]}
-          </button>
-        ))}
+        {ROLES.map((r) => {
+          const av = ROLE_AVATAR[r];
+          return (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              aria-checked={role === r}
+              onClick={() => setRole(r)}
+              className={cn(
+                "flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-0.5 text-[11.5px] font-medium transition-all duration-200",
+                role === r ? "bg-white text-brand-800 shadow-sm" : "text-ink-muted hover:bg-white/60 hover:text-ink",
+              )}
+            >
+              <span
+                className={cn(
+                  "grid size-5 shrink-0 place-items-center rounded-full text-[9.5px] font-semibold leading-none",
+                  av.tone,
+                )}
+              >
+                {av.initials}
+              </span>
+              {ROLE_LABELS[r]}
+            </button>
+          );
+        })}
       </div>
       {!roleNoteDismissed && (
         <div className="absolute top-full right-0 z-40 mt-1.5 flex w-72 animate-fade-in items-start gap-2 rounded-lg border border-line bg-white px-3 py-2 text-[11.5px] leading-snug text-ink-soft shadow-lg">

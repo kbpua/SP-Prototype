@@ -46,7 +46,7 @@ export function CodeBadge({
     <span
       title={title ?? `Ineligibility code ${code}: ${codeLabel(code)}`}
       className={cn(
-        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-coral/35 bg-coral-soft px-1 font-mono text-[10.5px] font-semibold leading-none text-[#991b1b]",
+        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-coral/25 bg-coral-soft px-1.5 font-mono text-[10.5px] font-semibold leading-none text-[#991b1b]",
         className,
       )}
     >

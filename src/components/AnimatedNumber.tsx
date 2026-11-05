@@ -31,5 +31,5 @@ export function AnimatedNumber({
     return () => cancelAnimationFrame(raf);
   }, [value, duration]);
 
-  return <span className={className ?? "tabular"}>{formatNumber(display, digits)}</span>;
+  return <span className={className ?? "tabular-nums"}>{formatNumber(display, digits)}</span>;
 }

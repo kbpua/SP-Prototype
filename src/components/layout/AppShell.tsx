@@ -14,10 +14,10 @@ export function AppShell() {
   return (
     <div className="flex h-full overflow-hidden">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 w-full flex-1 flex-col bg-slate-50">
         <TopBar />
-        <main ref={mainRef} className="flex-1 overflow-y-auto scrollbar-thin">
-          <div key={location.pathname} className="animate-stage-in">
+        <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto scrollbar-thin">
+          <div key={location.pathname} className="animate-page-in w-full">
             <Outlet />
           </div>
         </main>

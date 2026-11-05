@@ -21,7 +21,7 @@ export function PageHeader({
       <div className="max-w-3xl min-w-0">
         {step && <div className="mb-1.5 text-[12px] font-medium text-brand-700">{step}</div>}
         <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-[26px] font-semibold tracking-tight text-ink leading-tight">{title}</h1>
+          <h1 className="text-[26px] font-bold tracking-tight text-ink leading-tight">{title}</h1>
           {badges}
         </div>
         {description && <p className="mt-2 text-[14.5px] leading-relaxed text-ink-soft">{description}</p>}
@@ -36,7 +36,7 @@ export function PageContainer({ children, className }: { children: ReactNode; cl
   return (
     <div
       className={cn(
-        "mx-auto flex w-full max-w-[1400px] min-h-[calc(100dvh-var(--topbar-h))] flex-col px-4 sm:px-6 lg:px-8 pt-6 lg:pt-8",
+        "mx-auto flex w-full max-w-[1600px] min-h-[calc(100dvh-var(--topbar-h))] flex-1 flex-col px-6 sm:px-8 lg:px-10 pt-6 lg:pt-8",
         className,
       )}
     >
@@ -62,7 +62,7 @@ export function StageFooter({
         <div className="h-6 shrink-0" />
         <div
           className={cn(
-            "sticky bottom-0 z-20 mt-auto flex items-center justify-between gap-4 border-t border-line bg-cream/95 py-2.5 backdrop-blur",
+            "sticky bottom-0 z-20 mt-auto flex items-center justify-between gap-4 border-t border-slate-200/80 bg-white/90 py-2.5 backdrop-blur-md supports-[backdrop-filter]:bg-white/80",
             className,
           )}
         >
