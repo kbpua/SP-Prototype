@@ -97,9 +97,9 @@ export default function Appraisal() {
           type="button"
           onClick={loadSampleAppraisal}
           className="flex shrink-0 whitespace-nowrap cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-flag/40 px-2.5 py-1 text-[11.5px] font-medium text-[#854408] hover:bg-white/60"
-          title="Loads pre-written sample judgements for demonstration purposes"
+          title="Demo shortcut: fills every RoB 2 / AMSTAR 2 domain for included studies so appraisal is 100% complete"
         >
-          <Wand2 className="size-3.5" /> Demo: load sample judgements
+          <Wand2 className="size-3.5" /> Demo shortcut: complete all judgements
         </button>
       </div>
 
@@ -210,7 +210,12 @@ export default function Appraisal() {
             : "All included studies have been appraised."
         }
       >
-        <Button onClick={() => navigate("/review/extraction")}>
+        <Button
+          className={cn(
+            stageProgress.appraisal >= 100 && "bg-brand-600 hover:bg-brand-700 border-brand-600 text-white",
+          )}
+          onClick={() => navigate("/review/extraction")}
+        >
           Proceed to extraction
           <ArrowRight />
         </Button>

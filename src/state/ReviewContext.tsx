@@ -266,20 +266,6 @@ function loadState(): ReviewState {
   return initialState;
 }
 
-/** Demo shortcut: Reviewer B departs from the reference decision on these records. */
-const DEMO_SCREENING_B: Record<string, ScreeningDecision> = {
-  s09: { decision: "include" },
-  s07: { decision: "maybe" },
-  s12: { decision: "exclude", code: "S", reason: "Wrong study design" },
-};
-
-/** Demo shortcut: Reviewer B departs from the reference extraction decision on these fields. */
-const DEMO_FIELD_B: Partial<Record<FieldId, FieldVerification>> = {
-  funding: { status: "rejected" },
-  hr: { status: "corrected", value: "0.72 (0.61–0.87)" },
-  female: { status: "corrected", value: "24.2" },
-};
-
 const now = () => new Date().toISOString();
 
 interface ReviewContextValue {
@@ -444,6 +430,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
   const applySuggestedDecisions = useCallback(() => {
     setState((s) => {
       const screeningDual = { ...s.screeningDual };
+      const stamp = now();
       for (const c of SCREENABLE_STUDIES) {
         const rec = { ...screeningDual[c.id] };
         let reference: ScreeningDecision;
@@ -458,8 +445,13 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
             codeNote: sug.note ?? (sug.code ? undefined : "Not specified"),
           };
         }
-        if (!rec.A) rec.A = { ...reference, at: now() };
-        if (!rec.B) rec.B = { ...(DEMO_SCREENING_B[c.id] ?? reference), at: now() };
+        // Fill any missing reviewer commits with the system reference (both sides agree).
+        if (!rec.A) rec.A = { ...reference, at: stamp };
+        if (!rec.B) rec.B = { ...reference, at: stamp };
+        // Resolve any remaining conflict so Proceed unlocks immediately.
+        if (rec.A && rec.B && !screeningAgree(rec.A, rec.B) && !rec.resolved) {
+          rec.resolved = { ...reference, at: stamp, resolver: RESOLVER_ROLE };
+        }
         screeningDual[c.id] = rec;
       }
       return { ...s, screeningDual };
@@ -489,14 +481,25 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
   const loadSampleAppraisal = useCallback(() => {
     setState((s) => {
       const appraisal = { ...s.appraisal };
-      const samples = PROTOTYPE_CONFIG.showOutOfScopeMocks
-        ? [...Object.entries(SAMPLE_ROB2), ...Object.entries(SAMPLE_AMSTAR2)]
-        : Object.entries(SAMPLE_ROB2);
-      for (const [id, domains] of samples) {
-        if (dualFinal(s.screeningDual[id], screeningAgree)?.decision !== "include") continue;
-        appraisal[id] = Object.fromEntries(
-          Object.entries(domains).map(([d, v]) => [d, { judgement: v.j, note: v.note }]),
-        );
+      for (const study of SCREENABLE_STUDIES) {
+        if (dualFinal(s.screeningDual[study.id], screeningAgree)?.decision !== "include") continue;
+        const amstar = usesAmstar(study, s.designs);
+        if (amstar && !PROTOTYPE_CONFIG.showOutOfScopeMocks) continue;
+        const sample = amstar ? SAMPLE_AMSTAR2[study.id] : SAMPLE_ROB2[study.id];
+        const items = amstar ? AMSTAR2_ITEMS : ROB2_DOMAINS;
+        const next: Record<string, DomainAssessment> = { ...(appraisal[study.id] ?? {}) };
+        for (const item of items) {
+          const fromSample = sample?.[item.id];
+          if (fromSample) {
+            next[item.id] = { judgement: fromSample.j, note: fromSample.note };
+          } else if (!next[item.id]?.judgement) {
+            next[item.id] = {
+              judgement: amstar ? "yes" : "low",
+              note: "Sample judgement loaded for demonstration.",
+            };
+          }
+        }
+        appraisal[study.id] = next;
       }
       return { ...s, appraisal };
     });
@@ -592,6 +595,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       const fieldDual = { ...s.fieldDual };
       const tagDual = { ...s.tagDual };
       const active = activeFieldIds(s.config.schemas, reconcileOutcomes(s.config.outcome, s.effectMeasures));
+      const stamp = now();
       for (const study of extractable) {
         if (!study.trial) continue;
         const fields = { ...fieldDual[study.id] };
@@ -601,13 +605,20 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           const reference: FieldVerification =
             f.extracted === f.truth ? { status: "accepted" } : { status: "corrected", value: f.truth };
           const rec = { ...fields[f.def.id] };
-          if (!rec.A) rec.A = { ...reference, at: now() };
-          if (!rec.B) rec.B = { ...(DEMO_FIELD_B[f.def.id] ?? reference), at: now() };
+          if (!rec.A) rec.A = { ...reference, at: stamp };
+          if (!rec.B) rec.B = { ...reference, at: stamp };
+          if (rec.A && rec.B && !fieldAgree(rec.A, rec.B) && !rec.resolved) {
+            rec.resolved = { ...reference, at: stamp, resolver: RESOLVER_ROLE };
+          }
           fields[f.def.id] = rec;
           if (suggestTag(f.def.id, f.extracted, s.config.stakeholderCategories)) {
+            const accepted: TagDecision = { status: "accepted" };
             const t = { ...tagsRec[f.def.id] };
-            if (!t.A) t.A = { status: "accepted", at: now() };
-            if (!t.B) t.B = { status: "accepted", at: now() };
+            if (!t.A) t.A = { ...accepted, at: stamp };
+            if (!t.B) t.B = { ...accepted, at: stamp };
+            if (t.A && t.B && !tagAgree(t.A, t.B) && !t.resolved) {
+              t.resolved = { ...accepted, at: stamp, resolver: RESOLVER_ROLE };
+            }
             tagsRec[f.def.id] = t;
           }
         }

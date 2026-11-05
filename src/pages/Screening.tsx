@@ -305,7 +305,10 @@ export default function Screening() {
             <div className="shrink-0 space-y-2 rounded-xl border border-line bg-white p-3 shadow-2xs">
               <Button
                 size="lg"
-                className="w-full justify-center shadow-xs"
+                className={cn(
+                  "w-full justify-center shadow-xs transition-colors",
+                  canProceed && "bg-brand-600 hover:bg-brand-700 border-brand-600 text-white",
+                )}
                 disabled={!canProceed}
                 onClick={handleProceed}
                 title={canProceed ? undefined : footerNote}
@@ -321,11 +324,11 @@ export default function Screening() {
               <button
                 type="button"
                 onClick={applySuggestedDecisions}
-                title="Demo shortcut: fills both reviewers' remaining decisions with reference decisions, including a few disagreements to resolve"
+                title="Demo shortcut: instantly fills and resolves every remaining screening decision with the system reference so Proceed unlocks"
                 className="flex w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-dashed border-line px-2 py-1.5 text-[11.5px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700 bg-cream/40"
               >
                 <Wand2 className="size-3.5 shrink-0" />
-                <span className="truncate">Demo shortcut: fill remaining with reference decisions</span>
+                <span className="truncate">Demo shortcut: resolve all with reference decisions</span>
               </button>
             </div>
           </div>
@@ -442,7 +445,7 @@ function StudyRow({
               Score and recommendation hidden until you commit
             </div>
           ) : (
-            <>
+            <div className="rounded-lg border border-line bg-cream/70 px-2.5 py-2.5">
               <div className={cn("text-[20px] font-semibold leading-none tabular", tone.text)}>
                 {Math.round(study.relevance * 100)}
               </div>
@@ -457,7 +460,7 @@ function StudyRow({
               >
                 {REC_STYLE[rec_].label}
               </div>
-            </>
+            </div>
           )}
         </div>
 
@@ -666,7 +669,7 @@ function RationaleBox({
 
   if (hidden && !editing) {
     return (
-      <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-line px-3.5 py-2 text-[12px] text-ink-muted">
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-line bg-cream/50 px-3.5 py-2 text-[12px] text-ink-muted">
         <span className="flex items-center gap-1.5">
           <EyeOff className="size-3.5 shrink-0" /> System-suggested rationale hidden until you commit
         </span>
@@ -685,7 +688,7 @@ function RationaleBox({
     <div
       className={cn(
         "mt-3 rounded-lg border px-3.5 py-2.5 transition-colors",
-        edited ? "border-flag/35 bg-flag-soft/40" : "border-brand-100 bg-brand-50/40",
+        edited ? "border-flag/35 bg-flag-soft/40" : "border-line bg-cream/60",
       )}
     >
       <div className="flex items-center justify-between gap-2">

@@ -1,6 +1,6 @@
 export const PROTOTYPE_CONFIG = {
   showOutOfScopeMocks: false, // AMSTAR 2 branch, Table 4 conformance panel, GRADE card: hidden when false
-  hideSuggestionsUntilCommit: true, // system-suggested pills and relevance scores stay hidden until the reviewer commits
+  hideSuggestionsUntilCommit: false, // system suggestions stay visible as a guide during human-in-the-loop review
   tieBreak: "adjudicator" as "adjudicator" | "reviewerA",
   synthesisGate: "block" as "block" | "warn",
 };

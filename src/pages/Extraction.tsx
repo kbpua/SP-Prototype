@@ -668,13 +668,18 @@ export default function Extraction() {
         <button
           type="button"
           onClick={applyReferenceExtraction}
-          title="Demo shortcut: fills both reviewers' remaining field and tag decisions with reference decisions, including a few disagreements to resolve"
+          title="Demo shortcut: instantly accepts remaining fields, resolves conflicts, and unlocks Proceed to synthesis"
           className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-dashed border-line bg-cream/40 px-2.5 py-1.5 text-[11.5px] text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700"
         >
           <Wand2 className="size-3.5 shrink-0" />
-          Demo shortcut: fill remaining with reference decisions
+          Demo shortcut: resolve all fields and tags
         </button>
-        <Button size="lg" disabled={!allDocsDone} onClick={() => navigate("/review/synthesis")}>
+        <Button
+          size="lg"
+          className={cn(allDocsDone && "bg-brand-600 hover:bg-brand-700 border-brand-600 text-white")}
+          disabled={!allDocsDone}
+          onClick={() => navigate("/review/synthesis")}
+        >
           Proceed to synthesis
           <ArrowRight />
         </Button>
@@ -981,7 +986,7 @@ function TagRow({
         <span className="flex items-center gap-1 font-semibold text-ink-soft">
           <Tag className="size-3 text-brand-600" /> Stakeholder tag
         </span>
-        <span className="text-[10.5px] text-ink-muted">rule-based, not benchmarked</span>
+        <span className="text-[10.5px] text-ink-muted">Stakeholder tag: rule-based, not benchmarked</span>
         {hidden ? (
           <span className="flex items-center gap-1 text-ink-muted">
             <EyeOff className="size-3" /> Suggestion hidden until you commit this field
