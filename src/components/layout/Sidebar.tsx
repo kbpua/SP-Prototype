@@ -13,7 +13,7 @@ export function Sidebar() {
     <aside className="flex w-16 lg:w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white/80 backdrop-blur-md transition-[width] duration-200">
       <div className="flex items-center justify-center gap-3 px-3 pt-4 pb-4 lg:justify-start lg:px-5">
         <img
-          src="/sinag-logo.png"
+          src="/sinag-logo.svg"
           alt="SINAG"
           className="h-14 w-14 shrink-0 rounded-full object-cover shadow-sm ring-1 ring-slate-200"
         />
